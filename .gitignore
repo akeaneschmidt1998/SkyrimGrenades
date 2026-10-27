@@ -1,0 +1,11 @@
+build/
+out/
+.vs/
+dist/SKSE/Plugins/*.dll
+dist/SKSE/Plugins/*.pdb
+mod/
+preview/
+vcpkg-binary-cache/
+build-output.txt
+__pycache__/
+

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Generates FirePots.esp (pot item, projectile, explosion, recipe) with Mutagen, then re-reads it to verify.
+       Run: dotnet run -c Release - -out <folder> -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Mutagen pulls in a lot; don't fail the build on its analyzer warnings. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Mutagen.Bethesda.Skyrim" Version="0.54.4" />
+  </ItemGroup>
+
+</Project>

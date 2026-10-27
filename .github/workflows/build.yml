@@ -1,0 +1,140 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # FirePots.esp (Mutagen) and the offline math tests. Fast, so mistakes show up long before the
+  # DLL build finishes.
+  data:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Generate and verify FirePots.esp
+        run: dotnet run --project tools/MakePlugin -c Release -- data-out
+
+      - name: Ballistics tests
+        run: |
+          g++ -std=c++20 -O2 -Wall -Wextra -Isrc tests/ballistics_test.cpp -o ballistics_test
+          ./ballistics_test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: game-data
+          path: data-out/
+          if-no-files-found: error
+
+  windows:
+    needs: data
+    runs-on: windows-latest   # same image CommonLibSSE-NG builds its prebuilt library on
+    env:
+      VCPKG_COMMIT: 23b8a8e7409c2d6346114a88e834165bde79a51c  # keep in sync with vcpkg.json builtin-baseline
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}\vcpkg-binary-cache
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSVC (x64)
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Restore vcpkg binary cache
+        id: vcpkg-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+          restore-keys: vcpkg-${{ env.VCPKG_COMMIT }}-
+
+      - name: Set up vcpkg
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+          git clone https://github.com/microsoft/vcpkg "$env:RUNNER_TEMP\vcpkg"
+          git -C "$env:RUNNER_TEMP\vcpkg" checkout $env:VCPKG_COMMIT
+          & "$env:RUNNER_TEMP\vcpkg\bootstrap-vcpkg.bat" -disableMetrics
+          "VCPKG_ROOT=$env:RUNNER_TEMP\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Configure
+        run: cmake --preset release
+
+      - name: Save vcpkg binary cache
+        if: always() && steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+          key: vcpkg-${{ env.VCPKG_COMMIT }}-${{ hashFiles('vcpkg.json') }}
+
+      # Compiler errors are re-emitted as annotations so they show on the run page.
+      - name: Build plugin
+        shell: pwsh
+        run: |
+          cmake --build --preset release -- -k 0 2>&1 | Tee-Object -FilePath build-output.txt
+          $code = $LASTEXITCODE
+          if ($code -ne 0) {
+            $errors = Select-String -Path build-output.txt -Pattern '(error [A-Z]+\d+|fatal error|: error|CMake Error|LINK : fatal)' |
+              ForEach-Object { $_.Line.Trim() } | Select-Object -Unique
+            $i = 0
+            foreach ($e in $errors) {
+              if ($i -ge 9) { break }
+              $msg = $e -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+              Write-Output "::error title=Build error $($i + 1)::$msg"
+              $i++
+            }
+            $all = ($errors | Select-Object -First 60) -join "`n"
+            $all = $all -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'
+            Write-Output "::error title=All build errors (first 60)::$all"
+            exit $code
+          }
+
+      - name: Render arc preview
+        shell: pwsh
+        run: |
+          cmake --build --preset release --target arc_preview
+          New-Item -ItemType Directory -Force preview | Out-Null
+          ./build/release/arc_preview.exe preview
+
+      - name: Get game data (esp)
+        uses: actions/download-artifact@v4
+        with:
+          name: game-data
+          path: mod/
+
+      - name: Stage mod folder
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force mod/SKSE/Plugins | Out-Null
+          Copy-Item dist/SKSE/Plugins/FirePots.dll, dist/SKSE/Plugins/FirePots.ini mod/SKSE/Plugins/
+          Get-ChildItem -Recurse -File mod | ForEach-Object { $_.FullName.Substring((Resolve-Path mod).Path.Length + 1) }
+
+      # The zip holds FirePots.esp and SKSE/Plugins/ at its root: installs as-is in MO2 / Vortex.
+      - name: Upload mod (drop-in for MO2 / Vortex)
+        uses: actions/upload-artifact@v4
+        with:
+          name: FirePots-mod
+          path: mod/
+          if-no-files-found: error
+
+      - name: Upload debug symbols
+        uses: actions/upload-artifact@v4
+        with:
+          name: FirePots-pdb
+          path: dist/SKSE/Plugins/FirePots.pdb
+
+      - name: Upload arc preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: arc-preview
+          path: preview/*.ppm
