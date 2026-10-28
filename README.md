@@ -6,7 +6,7 @@ strength; throw them with a wind-up, or set tripwires.
 ## Bombs
 
 A bomb is **trigger × payload × strength**, and every combination is its own item
-("Moderate Fire Bomb (Short Fuse)"): 5 triggers × 7 payloads × 3 strengths = 105 kinds. Every
+("Moderate Fire Bomb (Short Fuse)"): 4 triggers × 8 payloads × 3 strengths = 96 kinds. Every
 description gives the numbers (damage, radius, duration).
 
 | Trigger | What it does | Made with (per mild bomb) |
@@ -14,8 +14,11 @@ description gives the numbers (damage, radius, duration).
 | Impact (thrown) | bursts on contact | 1 Fire Salts |
 | Short fuse (thrown) | a real physics object: bounces, rolls, comes to rest; bursts 2 s after the throw | 1 Paper Roll, 1 Charcoal |
 | Long fuse (thrown) | the same, bursts 4.5 s after the throw | 2 Paper Roll, 1 Charcoal |
-| Tripwire (placed) | set down on the ground ahead of you; bursts when someone comes within ~1.7 m | a wire (Linen Wrap, Leather Strips or Leather) and an igniter (Fire Salts, Dwarven Gear or Dwarven Gyro) |
-| Volatile (placed) | set down (or just dropped from your pack); bursts when struck by a weapon, arrow, spell or another bomb's blast, so they chain. Pick one up to disarm it | 1 Fire Salts |
+| Tripwire (placed) | set down on the ground ahead of you; armed after 3 s, then bursts when anyone (you too) comes within ~1.7 m | a wire (Linen Wrap, Leather Strips or Leather) and an igniter (Fire Salts, Dwarven Gear or Dwarven Gyro) |
+
+**Every bomb is volatile once it's lying in the world** — set down with a tap of G, dropped from
+your pack, or a fuse bomb still rolling: a weapon, arrow, spell or another bomb's blast sets it
+off, so they chain. Pick one up to disarm it (not a lit fuse bomb).
 
 | Payload | What it does | Filling (any one, per mild bomb) |
 |---|---|---|
@@ -23,6 +26,7 @@ description gives the numbers (damage, radius, duration).
 | Fire | fire damage and burning ground | Fire Salts; or 2 Charred Skeever Hide / Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
 | Frost | frost damage that saps stamina, and slows | Frost Salts, Ice Wraith Teeth; or 2 Frost Mirriam |
 | Oil | a slick (60 s) that slows anyone in it; a fire bomb bursting in it sets it ablaze | Dwarven Oil, Troll Fat; or 2 Ash Hopper Jelly |
+| Smoke | a lingering cloud with a low mist under it: anyone inside is hidden (until they attack), loses stamina and gets no stamina regen | Charcoal; or 2 Tundra Cotton |
 | Fear | a blinding flash; everyone up to level 10/20/30 flees | Ectoplasm, Glow Dust; or 2 Nightshade / Deathbell |
 | Frenzy | everyone up to level 10/20/30 attacks whoever is nearest | Hagraven Feathers, Falmer Ear; or 2 Powdered Mammoth Tusk |
 | Concussion | wide stagger (1.75× the radius), very loud | Void Salts, Briar Heart; or 2 Bone Meal |
@@ -58,6 +62,7 @@ chests, barrels and enemies draw potions from). All in `[Loot]`.
   bomb in a hand, **hold that hand's attack button** to wind up (the hand comes up like readying a
   spell) and **release** to throw (the spell-release motion). A tripwire is set down instead.
 - **G**: hold to wind up, release to throw, without equipping anything (no hand animation).
+  **Tap G** to set the bomb down where you're looking instead (a fuse bomb's fuse is lit).
 - **V**: next kind of bomb you carry (swaps the one in your hand, if any).
 - A full wind-up lands about 20 m away on flat ground. Bombs are 70% of the container's size
   (`fProjectileScale`).
@@ -117,8 +122,8 @@ build\release\arc_preview.exe .
 
 Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 
-1. Log shows `FirePots loaded`, `105 of 105 bombs ready`, `Prices set for 105 bombs`, `Leveled
-   lists: 22 entries added`, ten `Debug Smoke N: ...` lines, `Watching hits`,
+1. Log shows `FirePots loaded`, `96 of 96 bombs ready`, `Prices set for 96 bombs`, `Leveled
+   lists: 25 entries added`, `Smoke cloud model ...`, `Frost burst model ...`, `Watching hits`,
    `menu font: Data/SKSE/Plugins/FirePots/MenuFont.ttf`, `Watching for MCM changes`. The MCM lists *Fire Pots* with three pages.
 2. Press H: the game pauses and the bomb-making table opens with a cursor. With nothing in your
    pack every count is 0 and *Craft* is greyed; the right side still lists what each bomb takes.
@@ -133,10 +138,11 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
    off. (Check whether walking over your own sets it off, and tell me.)
 7. Oil then fire on the same spot: the slick slows; the fire bomb sets it ablaze (log: `Oil slick
    ... ignited`).
-8. Volatile: set one down (G or a hand), walk off, shoot it with an arrow: it bursts. Two side by
-   side: hitting one sets off the other a beat later. Picking one up gives it back.
-9. Debug smoke bombs (Scrolls tab, *Debug Smoke 1: ...* to *10*): throw each and note which
-   cloud looks right; the INI line for each is in `[Debug]`.
+8. Tap G with any bomb: it's set down. Shoot it with an arrow: it bursts. Two side by side:
+   hitting one sets off the other a beat later. Picking one up gives it back.
+9. A tripwire: set it, wait 3 s, walk onto it: it goes off (so does an enemy walking onto it).
+   Every payload but frag and concussion shows something (oil a pool, frost a swirl, fear a
+   bright cloud, frenzy a dark one, smoke a cloud over a low mist).
 10. Make a few bombs: the Alchemy bar moves (log: `Alchemy practice: ...`).
 11. Fear / frenzy on a group of bandits; concussion staggers everything in a wide ring and is loud.
 12. Equip a bomb to the left hand, hold right-click, release: the hand's release motion, the bomb
@@ -144,25 +150,20 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 
 ## Known unknowns (only an in-game test can settle these)
 
-- **Tripwires and the player.** They use the engine's proximity trigger (like runes); whether your
-  own steps set it off isn't known yet.
+- **Borrowed looks** (`[Visuals]`): picked by name from vanilla forms, not seen in game yet; swap
+  any line for an alternative listed next to it.
 - **Fuse bombs' preview** shows the first bounce, not where they roll to.
 - **Fuse bombs at 70% size**: the model shrinks, but the engine may keep the collision full size,
   so a resting jug can float a hair above the ground. `fProjectileScale = 1` if it bothers you.
-- **Volatile bombs and hits**: they rely on the engine sending a hit event for a struck item lying
-  in the world. Arrows and spells should; melee swings at clutter might not. Bombs bursting
+- **Bombs in the world and hits**: they rely on the engine sending a hit event for a struck item
+  lying in the world. Arrows and spells should; melee swings at clutter might not. Bombs bursting
   nearby always set them off (the mod checks that itself).
 - **Oil only ignites from fire bombs**, not fire spells, torches or enchanted weapons yet.
 - **Hand throws ride on a scroll cast** (0.3 s charge, an invisible do-nothing projectile); the
   mod launches the real bomb when it sees the scroll used up.
-- **Borrowed visuals** (`[Visuals]`) may not all look right; the oil slick has no model of its own,
-  just a dark stain.
 
 ## To do
 
-- **Smoke bombs** (removed for now: the cloud borrowed a vanilla model that turned out to be
-  rocks). The ten debug smoke bombs try candidate looks; once one is picked, smoke comes back
-  with Charcoal / Tundra Cotton fillings and the hide-and-choke effect (form IDs stay reserved).
 - A real overhand throw animation through Open Animation Replacer (needs your
   `Skyrim - Animations.bsa`).
 - NPC bombers.

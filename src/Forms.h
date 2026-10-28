@@ -32,6 +32,7 @@ namespace Forms
 	void SetPrices();
 
 	inline RE::BGSProjectile* oilFireProjectile = nullptr;
+	inline RE::BGSProjectile* smokeMistProjectile[Bombs::kStrengths]{};  // smoke's low-mist layer, per strength
 
 	// "Skyrim.esm|0B9BD2" -> that form, or nullptr (logged).
 	RE::TESForm* Lookup(const std::string& a_ref);

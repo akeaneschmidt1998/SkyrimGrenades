@@ -243,7 +243,7 @@ namespace CraftUI
 		auto        X = [&](float a_x) { return ox + a_x * U; };
 		auto        Y = [&](float a_y) { return a_y * U; };
 
-		// payloads that exist (smoke is out for now)
+		// payloads that exist
 		std::vector<int> payloads;
 		for (int p = 0; p < Bombs::kP; ++p) {
 			if (Bombs::Available(p)) {
@@ -307,7 +307,7 @@ namespace CraftUI
 		Heading(dl, { X(c1x + 10.0f), Y(top) }, c1w * U - 20.0f * U, "Kind");
 		BeginColumn("##kind", { X(c1x), Y(top + 34.0f) }, { c1w * U, Y(Bombs::kT * 35.0f + 10.0f) });
 		{
-			static constexpr const char* kKind[Bombs::kT] = { "thrown", "thrown", "thrown", "placed", "placed" };
+			static constexpr const char* kKind[Bombs::kT] = { "thrown", "thrown", "thrown", "placed" };
 			for (int t = 0; t < Bombs::kT; ++t) {
 				if (Row(("t" + std::to_string(t)).c_str(), std::string(Bombs::kTriggerNames[t]), kKind[t], st.trigger == t, true, c1w * U)) {
 					st.trigger = t;

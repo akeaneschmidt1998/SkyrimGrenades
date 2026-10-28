@@ -208,6 +208,24 @@ namespace Forms
 			}
 			logger::info("{} burst model '{}' (from {})", Bombs::kPayloadNames[p], mesh, Config::explosionModel[p]);
 		}
+		// what you actually see: hazards take a borrowed model (explosions apparently don't)
+		auto hazardLook = [&](unsigned a_id, const std::string& a_setting, const char* a_what) {
+			if (auto* h = dh->LookupForm<RE::BGSHazard>(a_id, kPlugin)) {
+				SetModelFrom(h, a_setting, a_what);
+			} else {
+				logger::warn("{}: hazard {:X} missing (old FirePots.esp?)", a_what, a_id);
+			}
+		};
+		for (int s = 0; s < Bombs::kStrengths; ++s) {
+			hazardLook(Bombs::SmokeCloudId(s), Config::smokeCloudModel, "Smoke cloud");
+			hazardLook(Bombs::SmokeMistHazardId(s), Config::smokeMistModel, "Smoke mist");
+			hazardLook(Bombs::OilSlickId(s), Config::oilSlickModel, "Oil slick");
+			smokeMistProjectile[s] = dh->LookupForm<RE::BGSProjectile>(Bombs::SmokeMistProjectileId(s), kPlugin);
+		}
+		hazardLook(Bombs::kFrostBurstId, Config::frostBurstModel, "Frost burst");
+		hazardLook(Bombs::kFearBurstId, Config::fearBurstModel, "Fear flash");
+		hazardLook(Bombs::kFrenzyBurstId, Config::frenzyBurstModel, "Frenzy burst");
+
 		// debug smoke bombs: each gets one candidate look
 		for (int k = 0; k < Bombs::kDebugSmokes; ++k) {
 			auto& d = Types()[DebugIndex(k)];

@@ -54,19 +54,25 @@ namespace Config
 		"Skyrim.esm|0B9BDE",  // short fuse: small clay jug
 		"Skyrim.esm|0B9BD6",  // long fuse: large clay jug
 		"Skyrim.esm|0F08F6",  // tripwire: Nordic pot
-		"Skyrim.esm|0B9BD4",  // volatile: glazed pot (the other one)
 	};
 	inline std::string explosionModel[Bombs::kPayloads]{
 		"Skyrim.esm|088109",  // frag: FallingDustExplosion01
 		"Skyrim.esm|070E5C",  // fire: TrapOilLampExplosion01
 		"Skyrim.esm|044089",  // frost: ExplosionRuneFrost01
 		"Skyrim.esm|01A13C",  // oil: FXdustDropSmExplosion (a splash)
-		"",                   // smoke: out for now
+		"",                   // smoke: none (the cloud is the show)
 		"Skyrim.esm|0D13E8",  // fear: ExplosionShockMass01 (flash)
 		"Skyrim.esm|0665BB",  // frenzy: ExplosionRuneShock01
 		"Skyrim.esm|0FDBBA",  // concussion: TG08BShockwaveExplosion
 	};
 	inline std::string oilFireModel = "Skyrim.esm|109E74";         // TrapOilExplosionInitial
+	// Hazards (lingering or short) take a borrowed model reliably; these are what you see.
+	inline std::string smokeCloudModel = "Skyrim.esm|0D6012";      // BFXSmokeBurningVol (debug smoke 5)
+	inline std::string smokeMistModel = "Skyrim.esm|0B946C";       // FXMistLowSmokey01 (debug smoke 6)
+	inline std::string oilSlickModel = "Dragonborn.esm|01DA00";    // DLC2ExpSpiderOilPool (oil spider's pool)
+	inline std::string frostBurstModel = "Skyrim.esm|0B79F9";      // FrostBlizzardSpellHazard01
+	inline std::string fearBurstModel = "Skyrim.esm|08CA32";       // FX_AzuraGoodMagicCloud
+	inline std::string frenzyBurstModel = "Skyrim.esm|08CA31";     // FX_AzuraEvilMagicCloud
 
 	// --- Crafting ---
 	// Font of the bomb-making menu (a .ttf/.otf; relative to the Skyrim folder). Missing = built-in.
@@ -91,7 +97,7 @@ namespace Config
 		std::string form;   // "Plugin.esm|HEXID": a moveable static / activator (the cloud) or an explosion (the burst)
 		std::string label;  // shown in the item name
 	};
-	inline bool                    giveDebugSmokeBombs = true;  // top up to 5 of each on every load
+	inline bool                    giveDebugSmokeBombs = false;  // top up to 5 of each on every load
 	inline std::vector<DebugSmoke> debugSmokes;                 // sDebugSmoke = form, label (up to 10)
 
 	// --- Bottle return: drinking wine gives the empty bottle back ---

@@ -18,14 +18,14 @@
 
 namespace Bombs
 {
-	enum Trigger : int { kImpact, kShortFuse, kLongFuse, kTripwire, kVolatile, kTriggers };
+	enum Trigger : int { kImpact, kShortFuse, kLongFuse, kTripwire, kTriggers };
 	enum Payload : int { kFrag, kFire, kFrost, kOil, kSmoke, kFear, kFrenzy, kConcussion, kPayloads };
 	enum Strength : int { kMild, kModerate, kMajor, kStrengths };
 
 	inline constexpr int kT = kTriggers, kP = kPayloads, kS = kStrengths;
-	inline constexpr int kCount = kT * kP * kS;  // 120 (smoke's 15 aren't in the game)
+	inline constexpr int kCount = kT * kP * kS;  // 96
 
-	inline constexpr std::array<std::string_view, kT> kTriggerNames{ "Impact", "Short Fuse", "Long Fuse", "Tripwire", "Volatile" };
+	inline constexpr std::array<std::string_view, kT> kTriggerNames{ "Impact", "Short Fuse", "Long Fuse", "Tripwire" };
 	inline constexpr std::array<std::string_view, kP> kPayloadNames{ "Frag", "Fire", "Frost", "Oil", "Smoke", "Fear", "Frenzy", "Concussion" };
 	inline constexpr std::array<std::string_view, kS> kStrengthNames{ "Mild", "Moderate", "Major" };
 
@@ -42,6 +42,11 @@ namespace Bombs
 	constexpr unsigned ExplosionId(int a_payload, int a_strength) { return 0xC80u + static_cast<unsigned>(a_payload * 3 + a_strength); }
 	constexpr unsigned EnchantId(int a_payload, int a_strength) { return 0xCB0u + static_cast<unsigned>(a_payload * 3 + a_strength); }
 	inline constexpr unsigned kOilFireProjectileId = 0xCF4;
+	constexpr unsigned SmokeCloudId(int s) { return 0xCE0u + static_cast<unsigned>(s); }
+	constexpr unsigned OilSlickId(int s) { return 0xCE9u + static_cast<unsigned>(s); }
+	constexpr unsigned SmokeMistHazardId(int s) { return 0xD60u + static_cast<unsigned>(s); }
+	constexpr unsigned SmokeMistProjectileId(int s) { return 0xD66u + static_cast<unsigned>(s); }
+	inline constexpr unsigned kFrostBurstId = 0xD70, kFearBurstId = 0xD71, kFrenzyBurstId = 0xD72;
 
 	// Debug smoke bombs: one per candidate smoke effect, to try them out (FirePots.ini [Debug]).
 	inline constexpr int kDebugSmokes = 10;
@@ -71,11 +76,14 @@ namespace Bombs
 	// Fuse bombs are real physics objects (they bounce and roll); the fuse is lit when thrown.
 	constexpr float FuseSeconds(int a_trigger) { return a_trigger == kShortFuse ? 2.0f : a_trigger == kLongFuse ? 4.5f : 0.0f; }
 	constexpr bool  IsFuse(int a_trigger) { return a_trigger == kShortFuse || a_trigger == kLongFuse; }
-	constexpr bool  IsPlaced(int a_trigger) { return a_trigger == kTripwire || a_trigger == kVolatile; }
+	constexpr bool  IsPlaced(int a_trigger) { return a_trigger == kTripwire; }
+	inline constexpr float kTripwireArmSeconds = 3.0f;
 
-	// Payloads in the game. Smoke is out until a real smoke effect is picked (the debug smoke bombs
-	// are for that); its form IDs stay reserved so nothing else moves.
-	constexpr bool Available(int a_payload) { return a_payload != kSmoke; }
+	// Any bomb lying in the world (set down, dropped, a fuse bomb still rolling) goes off when struck
+	// or caught in another bomb's blast.
+
+	// Payloads in the game (smoke was out for a while; kept so it's easy to pull one again).
+	constexpr bool Available(int) { return true; }
 
 	inline std::string Name(int a_index)
 	{
@@ -105,8 +113,7 @@ namespace Bombs
 		const char* how = a_trigger == kImpact    ? "Shatters on impact:" :
 		                  a_trigger == kShortFuse ? "Bounces and rolls, then 2 seconds after the throw:" :
 		                  a_trigger == kLongFuse  ? "Bounces and rolls, then 4.5 seconds after the throw:" :
-		                  a_trigger == kTripwire  ? "Set it down; when someone comes within 1.7 m:" :
-		                                            "Set it down; when it's struck by a weapon, arrow, spell or blast:";
+		                                            "Set it down; 3 seconds later it's armed, and when anyone comes within 1.7 m:";
 		std::string what;
 		switch (a_payload) {
 		case kFrag: what = n(FragDamage(s)) + " damage within " + r + ", and a shove"; break;

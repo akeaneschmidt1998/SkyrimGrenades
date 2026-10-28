@@ -285,6 +285,7 @@ namespace
 		RE::ProjectileHandle handle;
 		int                  payload = 0;
 		int                  strength = 0;
+		bool                 debug = false;
 		Vec3                 last;
 	};
 	struct Slick
@@ -304,6 +305,7 @@ namespace
 		l.handle = a_handle;
 		l.payload = a_type.payload;
 		l.strength = a_type.strength;
+		l.debug = a_type.debug;
 		if (auto p = a_handle.get()) {
 			l.last = ToVec(p->GetPosition());
 		}
@@ -326,6 +328,21 @@ namespace
 		logger::info("Oil slick at ({:.0f}, {:.0f}, {:.0f}) ignited", a_slick.pos.x, a_slick.pos.y, a_slick.pos.z);
 	}
 
+	// Smoke's second layer: a low mist dropped where the smoke bomb burst.
+	void SmokeMist(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_strength)
+	{
+		auto* base = Forms::smokeMistProjectile[std::clamp(a_strength, 0, Bombs::kStrengths - 1)];
+		if (!base) {
+			return;
+		}
+		RE::Projectile::ProjectileRot rot{ 1.5707963f * g_pitchSign, 0.0f };
+		RE::Projectile::LaunchData    data(base, a_player, ToNi(a_at + Vec3{ 0.0f, 0.0f, 30.0f }), rot);
+		data.autoAim = false;
+		data.useOrigin = true;
+		RE::ProjectileHandle h;
+		RE::Projectile::Launch(&h, data);
+	}
+
 	void UpdateOil(RE::PlayerCharacter* a_player, float a_dt)
 	{
 		for (auto& s : g_slicks) {
@@ -342,6 +359,9 @@ namespace
 			}
 			// gone: it burst at its last position
 			ChainFrom(it->last, Bombs::BlastRadius(it->payload, it->strength));
+			if (it->payload == Bombs::kSmoke && !it->debug) {
+				SmokeMist(a_player, it->last, it->strength);
+			}
 			if (it->payload == Bombs::kOil) {
 				g_slicks.push_back({ it->last, Bombs::OilSlickRadius(it->strength), 60.0f });
 			} else if (it->payload == Bombs::kFire) {
@@ -402,16 +422,22 @@ namespace
 		int                 pushes = 0;  // frames the velocity was applied (twice: the body can join the world a frame late)
 		int                 waited = 0;  // frames spent waiting for the body to exist
 		float               age = 0.0f;
-		float               fuse = 2.0f;  // < 0: no fuse (a volatile bomb being set down)
+		float               fuse = 2.0f;  // < 0: no fuse (a bomb being set down)
 		Vec3                last;
 	};
 	std::vector<Lit> g_lit;
 
-	// --- Volatile bombs: set down (or just dropped from the pack), they burst when struck --------
-	// Struck = a hit event on them (weapon, arrow, spell), or another bomb bursting within its
-	// radius. Picking one up disarms it. Found by scanning around the player every second, so
-	// they keep working after a reload or when you come back to them.
-	std::vector<RE::ObjectRefHandle> g_volatile;
+	// --- Bombs lying in the world: set down, dropped from the pack, or a fuse bomb still rolling --
+	// Any of them bursts when struck (a hit event: weapon, arrow, spell) or caught in another
+	// bomb's blast; a tripwire also when anyone (you too) comes within 1.7 m, once it's armed.
+	// Picking one up disarms it. Found by scanning around the player every second, so they keep
+	// working after a reload or when you come back to them.
+	struct WorldBomb
+	{
+		RE::ObjectRefHandle ref;
+		float               age = 0.0f;  // seconds since first seen (tripwires arm after kTripwireArmSeconds)
+	};
+	std::vector<WorldBomb> g_world;
 	struct Pending
 	{
 		RE::ObjectRefHandle ref;
@@ -422,7 +448,8 @@ namespace
 	std::vector<RE::ObjectRefHandle> g_hits;  // from the hit event sink (any thread)
 	float                g_scanTimer = 0.0f;
 
-	int VolatileTypeOf(const RE::TESObjectREFR* a_ref)
+	// Which bomb a reference in the world is (-1 = not one; debug bombs don't count).
+	int BombTypeOf(const RE::TESObjectREFR* a_ref)
 	{
 		auto* base = a_ref ? a_ref->GetBaseObject() : nullptr;
 		if (!base || base->GetFormType() != RE::FormType::Scroll) {
@@ -431,10 +458,17 @@ namespace
 		const auto& types = Forms::Types();
 		for (std::size_t i = 0; i < types.size(); ++i) {
 			if (types[i].item == base) {
-				return types[i].trigger == Bombs::kVolatile && !types[i].debug ? static_cast<int>(i) : -1;
+				return types[i].debug ? -1 : static_cast<int>(i);
 			}
 		}
 		return -1;
+	}
+
+	void AddWorldBomb(const RE::ObjectRefHandle& a_ref)
+	{
+		if (std::ranges::none_of(g_world, [&](const WorldBomb& w) { return w.ref == a_ref; })) {
+			g_world.push_back({ a_ref, 0.0f });
+		}
 	}
 
 	void QueueBurst(const RE::ObjectRefHandle& a_ref, float a_delay)
@@ -449,10 +483,10 @@ namespace
 
 	void ChainFrom(const Vec3& a_at, float a_radius)
 	{
-		for (const auto& h : g_volatile) {
-			auto ref = h.get();
+		for (const auto& w : g_world) {
+			auto ref = w.ref.get();
 			if (ref && !ref->IsDisabled() && !ref->IsDeleted() && (ToVec(ref->GetPosition()) - a_at).Length() <= a_radius + 40.0f) {
-				QueueBurst(h, 0.15f);  // a short beat between bursts reads as a chain
+				QueueBurst(w.ref, 0.15f);  // a short beat between bursts reads as a chain
 			}
 		}
 	}
@@ -467,7 +501,7 @@ namespace
 		}
 		RE::BSEventNotifyControl ProcessEvent(const RE::TESHitEvent* a_event, RE::BSTEventSource<RE::TESHitEvent>*) override
 		{
-			if (a_event && a_event->target && VolatileTypeOf(a_event->target.get()) >= 0) {
+			if (a_event && a_event->target && BombTypeOf(a_event->target.get()) >= 0) {
 				std::scoped_lock l(g_hitLock);
 				g_hits.push_back(a_event->target->GetHandle());
 			}
@@ -534,6 +568,7 @@ namespace
 		l.fuse = Bombs::FuseSeconds(type.trigger);
 		l.last = a_origin;
 		g_lit.push_back(l);
+		AddWorldBomb(ref->GetHandle());
 		return true;
 	}
 
@@ -566,7 +601,7 @@ namespace
 			}
 			if (it->fuse < 0.0f) {
 				if (it->pushes >= 2 || it->waited >= 60) {
-					it = g_lit.erase(it);  // set down; from here on it's just a volatile bomb lying there
+					it = g_lit.erase(it);  // set down; from here on it's just a bomb lying there
 				} else {
 					++it;
 				}
@@ -585,7 +620,33 @@ namespace
 		}
 	}
 
-	void UpdateVolatile(RE::PlayerCharacter* a_player, float a_dt)
+	// Is anyone (alive) standing within a tripwire's reach?
+	bool SomeoneNear(RE::PlayerCharacter* a_player, const Vec3& a_at)
+	{
+		auto near = [&](RE::Actor* a) {
+			if (!a || a->IsDead() || a->IsDisabled()) {
+				return false;
+			}
+			const Vec3 d = ToVec(a->GetPosition()) - a_at;
+			return std::sqrt(d.x * d.x + d.y * d.y) <= Bombs::kTripwireRadius && std::fabs(d.z) < 150.0f;
+		};
+		if (near(a_player)) {
+			return true;
+		}
+		bool found = false;
+		if (auto* lists = RE::ProcessLists::GetSingleton()) {
+			lists->ForEachHighActor([&](RE::Actor* a_actor) {
+				if (near(a_actor)) {
+					found = true;
+					return RE::BSContainer::ForEachResult::kStop;
+				}
+				return RE::BSContainer::ForEachResult::kContinue;
+			});
+		}
+		return found;
+	}
+
+	void UpdateWorld(RE::PlayerCharacter* a_player, float a_dt)
 	{
 		{
 			std::scoped_lock l(g_hitLock);
@@ -597,20 +658,30 @@ namespace
 		g_scanTimer -= a_dt;
 		if (g_scanTimer <= 0.0f) {
 			g_scanTimer = 1.0f;
-			std::erase_if(g_volatile, [](const RE::ObjectRefHandle& h) {
-				auto r = h.get();
+			std::erase_if(g_world, [](const WorldBomb& w) {
+				auto r = w.ref.get();
 				return !r || r->IsDisabled() || r->IsDeleted() || !r->GetParentCell();
 			});
 			if (auto* tes = RE::TES::GetSingleton()) {
 				tes->ForEachReferenceInRange(a_player, 8000.0f, [](RE::TESObjectREFR* a_ref) {
-					if (a_ref && !a_ref->IsDisabled() && VolatileTypeOf(a_ref) >= 0) {
-						const auto h = a_ref->GetHandle();
-						if (std::ranges::find(g_volatile, h) == g_volatile.end()) {
-							g_volatile.push_back(h);
-						}
+					if (a_ref && !a_ref->IsDisabled() && BombTypeOf(a_ref) >= 0) {
+						AddWorldBomb(a_ref->GetHandle());
 					}
 					return RE::BSContainer::ForEachResult::kContinue;
 				});
+			}
+		}
+		// tripwires: anyone close, once armed
+		for (auto& w : g_world) {
+			w.age += a_dt;
+			if (w.age < Bombs::kTripwireArmSeconds) {
+				continue;
+			}
+			auto ref = w.ref.get();
+			const int type = BombTypeOf(ref.get());
+			if (type >= 0 && Forms::Types()[type].trigger == Bombs::kTripwire && ref->GetParentCell() &&
+				SomeoneNear(a_player, ToVec(ref->GetPosition()))) {
+				QueueBurst(w.ref, 0.0f);
 			}
 		}
 		for (auto it = g_toBurst.begin(); it != g_toBurst.end();) {
@@ -621,7 +692,7 @@ namespace
 			}
 			auto ref = it->ref.get();
 			it = g_toBurst.erase(it);
-			const int type = VolatileTypeOf(ref.get());
+			const int type = BombTypeOf(ref.get());
 			if (!ref || type < 0 || ref->IsDisabled() || ref->IsDeleted() || !ref->GetParentCell()) {
 				continue;  // picked up, or already gone
 			}
@@ -632,12 +703,18 @@ namespace
 		}
 	}
 
-	bool PlaceVolatile(RE::PlayerCharacter* a_player, int a_type, const Vec3& a_at)
+	// Sets a bomb down at a spot: it sits there as an item (a fuse bomb's fuse is lit; you can't pick
+	// that one up).
+	bool PlaceBomb(RE::PlayerCharacter* a_player, int a_type, const Vec3& a_at)
 	{
 		auto& type = Forms::Types()[a_type];
 		auto  ref = a_player->PlaceObjectAtMe(type.item, false);
 		if (!ref) {
 			return false;
+		}
+		const bool lit = Bombs::IsFuse(type.trigger);
+		if (lit) {
+			ref->SetActivationBlocked(true);
 		}
 		if (std::fabs(Config::projectileScale - 1.0f) > 0.001f) {
 			ref->SetScale(Config::projectileScale);
@@ -648,10 +725,10 @@ namespace
 		l.ref = ref->GetHandle();
 		l.type = a_type;
 		l.origin = at;
-		l.fuse = -1.0f;
+		l.fuse = lit ? Bombs::FuseSeconds(type.trigger) : -1.0f;
 		l.last = at;
 		g_lit.push_back(l);
-		g_volatile.push_back(ref->GetHandle());
+		AddWorldBomb(ref->GetHandle());
 		return true;
 	}
 
@@ -782,10 +859,10 @@ namespace
 		return point;
 	}
 
-	Plan MakePlan(RE::PlayerCharacter* a_player, const Aim& a_aim, float a_charge)
+	Plan MakePlan(RE::PlayerCharacter* a_player, const Aim& a_aim, float a_charge, bool a_setDown = false)
 	{
 		Plan p;
-		if (Bombs::IsPlaced(CurrentType().trigger)) {
+		if (a_setDown || Bombs::IsPlaced(CurrentType().trigger)) {
 			p.place = true;
 			p.placePoint = PlacePoint(a_player, a_aim);
 			p.speed = 30.0f;
@@ -861,8 +938,8 @@ namespace
 	void Launch(RE::PlayerCharacter* a_player, const Plan& a_plan, float a_charge, bool a_takeItem = true)
 	{
 		auto& type = CurrentType();
-		if (type.trigger == Bombs::kVolatile && !type.debug) {
-			if (!PlaceVolatile(a_player, static_cast<int>(g_typeIndex), a_plan.placePoint)) {
+		if (a_plan.place && !type.debug) {
+			if (!PlaceBomb(a_player, static_cast<int>(g_typeIndex), a_plan.placePoint)) {
 				Report("Couldn't set the bomb down (see FirePots.log)", true);
 				return;
 			}
@@ -1017,7 +1094,7 @@ namespace
 		UpdateScaled();
 		UpdateLit(a_player, dt);
 		UpdateOil(a_player, dt);
-		UpdateVolatile(a_player, dt);
+		UpdateWorld(a_player, dt);
 		g_throw.cooldown = (std::max)(0.0f, g_throw.cooldown - dt);
 
 		if (g_pending.active) {
@@ -1152,9 +1229,10 @@ namespace
 				StopWinding();
 				return;
 			}
-			// released: throw, unless it was only a tap
+			// released: a quick tap sets the bomb down where you're looking; a held one is thrown
 			if (g_throw.held * 1000.0f < Config::minHoldMs) {
-				Report("Hold to wind up, release to throw.", true);
+				Launch(a_player, MakePlan(a_player, *aim, 0.0f, true), 0.0f);
+				g_throw.cooldown = Config::cooldownMs / 1000.0f;
 			} else {
 				Launch(a_player, plan, charge);
 				g_throw.cooldown = Config::cooldownMs / 1000.0f;
@@ -1219,7 +1297,7 @@ namespace Thrower
 		g_slicks.clear();
 		g_lit.clear();
 		g_scaled.clear();
-		g_volatile.clear();
+		g_world.clear();
 		g_toBurst.clear();
 		{
 			std::scoped_lock l(g_hitLock);
