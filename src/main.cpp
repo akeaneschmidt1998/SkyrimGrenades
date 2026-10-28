@@ -1,5 +1,6 @@
 #include "BottleReturn.h"
 #include "Config.h"
+#include "Crafting.h"
 #include "Forms.h"
 #include "LeveledLists.h"
 #include "McmReload.h"
@@ -29,6 +30,7 @@ namespace
 		switch (a_msg->type) {
 		case SKSE::MessagingInterface::kInputLoaded:
 			Thrower::RegisterInput();
+			Crafting::Register();
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			Forms::Load();
@@ -38,6 +40,8 @@ namespace
 			Overlay::Install();
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:
+			Crafting::ForceClose();
+			[[fallthrough]];
 		case SKSE::MessagingInterface::kPostLoadGame:
 		case SKSE::MessagingInterface::kNewGame:
 			Thrower::Reset();

@@ -52,12 +52,12 @@ namespace ArcDraw
 
 		// Arc: bright near the hand, slightly dimmer far away; if nothing is hit within the traced
 		// time it fades out to say "it's going further than this".
-		// arc and ring colours per payload: frag, fire, oil, smoke, fear, frenzy, concussion
-		static constexpr int kArc[7][3] = { { 210, 190, 160 }, { 255, 170, 60 }, { 200, 150, 60 }, { 200, 200, 200 },
-			{ 255, 245, 170 }, { 230, 90, 140 }, { 150, 210, 255 } };
-		static constexpr int kRing[7][3] = { { 180, 150, 110 }, { 255, 110, 30 }, { 170, 110, 30 }, { 160, 160, 160 },
-			{ 255, 230, 90 }, { 200, 50, 110 }, { 90, 170, 255 } };
-		const int c = std::clamp(f.color, 0, 6);
+		// arc and ring colours per payload: frag, fire, frost, oil, smoke, fear, frenzy, concussion
+		static constexpr int kArc[8][3] = { { 210, 190, 160 }, { 255, 170, 60 }, { 140, 205, 255 }, { 200, 150, 60 },
+			{ 200, 200, 200 }, { 255, 245, 170 }, { 230, 90, 140 }, { 150, 210, 255 } };
+		static constexpr int kRing[8][3] = { { 180, 150, 110 }, { 255, 110, 30 }, { 90, 170, 255 }, { 170, 110, 30 },
+			{ 160, 160, 160 }, { 255, 230, 90 }, { 200, 50, 110 }, { 90, 170, 255 } };
+		const int c = std::clamp(f.color, 0, 7);
 		const int ar = kArc[c][0], ag = kArc[c][1], ab = kArc[c][2];
 		if (s.showArc) Polyline(dl, f.path, w, h, s.thickness, ar, ag, ab, [&](std::size_t i, std::size_t n) {
 			const float t = static_cast<float>(i) / static_cast<float>((std::max)(n - 1, std::size_t{ 1 }));

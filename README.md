@@ -6,19 +6,20 @@ strength; throw them with a wind-up, or set tripwires.
 ## Bombs
 
 A bomb is **trigger × payload × strength**, and every combination is its own item
-("Moderate Fire Bomb (Short Fuse)"): 4 × 7 × 3 = 84 kinds.
+("Moderate Fire Bomb (Short Fuse)"): 4 × 8 × 3 = 96 kinds.
 
 | Trigger | What it does | Made with (per mild bomb) |
 |---|---|---|
 | Impact (thrown) | bursts on contact | 1 Fire Salts |
 | Short fuse (thrown) | bounces and rolls, bursts after 1.5 s | 1 Paper Roll, 1 Charcoal |
 | Long fuse (thrown) | bursts after 4 s | 2 Paper Roll, 1 Charcoal |
-| Tripwire (placed) | set down on the ground ahead of you; bursts when someone comes within ~1.7 m | 1 Linen Wrap, 1 Fire Salts |
+| Tripwire (placed) | set down on the ground ahead of you; bursts when someone comes within ~1.7 m | a wire (Linen Wrap, Leather Strips or Leather) and an igniter (Fire Salts, Dwarven Gear or Dwarven Gyro) |
 
 | Payload | What it does | Filling (any one, per mild bomb) |
 |---|---|---|
 | Frag | shrapnel: physical damage and a shove | Nails, Quarried Stone (Hearthfire) or a Soul Gem Fragment |
 | Fire | fire damage and burning ground | Fire Salts; or 2 Charred Skeever Hide / Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
+| Frost | frost damage that saps stamina, and slows | Frost Salts, Ice Wraith Teeth; or 2 Frost Mirriam |
 | Oil | a slick (60 s) that slows anyone in it; a fire bomb bursting in it sets it ablaze | Dwarven Oil, Troll Fat; or 2 Ash Hopper Jelly |
 | Smoke | a lingering cloud: anyone inside is invisible (ends when they attack), loses stamina and gets no stamina regen | Charcoal; or 2 Tundra Cotton |
 | Fear | a blinding flash; everyone up to level 10/20/30 flees | Ectoplasm, Glow Dust; or 2 Nightshade / Deathbell |
@@ -35,14 +36,17 @@ Every bomb also takes **one empty container**: any empty wine bottle, clay or No
 Nordic pot. It's picked for you. **Drinking wine gives its empty bottle back.**
 
 **Getting bombs:** make them anywhere with **H**, or buy them: general goods merchants (fire, frag,
-oil, smoke, tripwires), apothecaries (fire, fear, frenzy), court wizards (concussion, fear). Bandits
+oil, smoke, tripwires), apothecaries (fire, frost, fear, frenzy), court wizards (concussion, fear,
+frost). Bandits
 and Forsworn carry a few. All in `[Loot]`.
 
 ## Controls
 
-- **H**: make bombs, anywhere: *what kind* (each shows what it takes) → *payload* (with how many
-  you could make) → *filling* (only if you carry more than one) → *strength* (with what each takes)
-  → *how many*. It always opens, so it's also the recipe book.
+- **H**: the bomb-making table, anywhere. Like the enchanting table: lists on the left (kind,
+  strength, payload, filling, with how many you could make or carry), and on the right the bomb,
+  what one takes (needed / carried, red when short), how many you can make, an amount and **Craft**.
+  The game pauses while it's up. Mouse, arrows/WASD or d-pad to choose; Enter/E/A to select;
+  Esc/Tab/B or H to close. It always opens, so it's also the recipe book.
 - **Bombs are scrolls**: Scrolls tab; buy, sell, stash, favorite and **equip to a hand**. With a
   bomb in a hand, **hold that hand's attack button** to wind up (the hand comes up like readying a
   spell) and **release** to throw (the spell-release motion). A tripwire is set down instead.
@@ -51,6 +55,11 @@ and Forsworn carry a few. All in `[Loot]`.
 - Throws are soft: a full wind-up lands about 12 m away on flat ground.
 - **Throw preview** (arc + landing ring, or a tripwire's trigger ring) is **off by default**; turn it
   on in the MCM. The small wind-up meter shows either way.
+
+![Bomb-making table](docs/craft_menu.png)
+
+The picture is the real menu code (`CraftUI.cpp`) rendered offline with a made-up pack
+(`craft_preview` target), not a mockup.
 
 ## Settings (MCM)
 
@@ -100,12 +109,13 @@ build\release\arc_preview.exe .
 
 Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 
-1. Log shows `FirePots loaded`, `84 of 84 bombs ready`, `Leveled lists: 15 entries added`,
+1. Log shows `FirePots loaded`, `96 of 96 bombs ready`, `Leveled lists: 17 entries added`,
    `Watching for MCM changes`. The MCM lists *Fire Pots* with three pages.
-2. Press H with nothing: the menu opens; *Thrown, impact* → *Fire* → *Fire Salts* → *Mild*: it
-   says what one takes (an empty container + 2 Fire Salts: one for the trigger, one for the filling).
-3. With an empty wine bottle, 4 Fire Salts: *impact* → *Fire (can make 2)* → *Mild (can make 2)*
-   → *1*: one "Mild Fire Bomb (Impact)", a bottle and 2 salts gone.
+2. Press H: the game pauses and the bomb-making table opens with a cursor. With nothing in your
+   pack every count is 0 and *Craft* is greyed; the right side still lists what each bomb takes.
+3. With an empty wine bottle and 4 Fire Salts: *Impact*, *Mild*, *Fire* (can make 2), Craft: one
+   "Mild Fire Bomb (Impact)", a bottle and 2 salts gone (one for the trigger, one for the filling).
+   Esc closes it and the game resumes; moving and attacking work again.
 4. Throw it with G: soft arc, bursts on contact, burning ground. With the preview on (MCM), the arc
    and a ring show while winding up.
 5. A short-fuse frag bomb bounces and bursts ~1.5 s after landing.

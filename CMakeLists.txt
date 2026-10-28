@@ -53,6 +53,7 @@ set(SOURCES
 	src/BottleReturn.cpp
 	src/Config.cpp
 	src/Crafting.cpp
+	src/CraftUI.cpp
 	src/Forms.cpp
 	src/LeveledLists.cpp
 	src/McmReload.cpp
@@ -69,6 +70,9 @@ set(HEADERS
 	src/Ballistics.h
 	src/Config.h
 	src/Crafting.h
+	src/CraftModel.h
+	src/CraftShared.h
+	src/CraftUI.h
 	src/Forms.h
 	src/LeveledLists.h
 	src/McmReload.h
@@ -92,7 +96,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE imgui::imgui d3d11 dxgi)
 target_compile_definitions(${PROJECT_NAME} PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
 
 # These two files must NOT see CommonLib (its WinAPI declarations clash with <Windows.h>).
-set_source_files_properties(src/OverlayD3D.cpp src/ArcDraw.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+set_source_files_properties(src/OverlayD3D.cpp src/ArcDraw.cpp src/CraftUI.cpp PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
 
 if(MSVC)
 	target_compile_options(${PROJECT_NAME} PRIVATE /W4 /permissive- /Zc:preprocessor /utf-8)
@@ -123,6 +127,10 @@ if(MOD_OUTPUT_DIR)
 		VERBATIM
 	)
 endif()
+
+add_executable(craft_preview EXCLUDE_FROM_ALL tests/craft_preview.cpp src/CraftUI.cpp)
+target_include_directories(craft_preview PRIVATE src)
+target_link_libraries(craft_preview PRIVATE imgui::imgui)
 
 add_executable(arc_preview EXCLUDE_FROM_ALL tests/arc_preview.cpp src/ArcDraw.cpp)
 target_include_directories(arc_preview PRIVATE src)

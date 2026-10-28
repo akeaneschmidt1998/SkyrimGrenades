@@ -111,12 +111,13 @@ jobs:
             exit $code
           }
 
-      - name: Render arc preview
+      - name: Render arc and menu previews
         shell: pwsh
         run: |
-          cmake --build --preset release --target arc_preview
+          cmake --build --preset release --target arc_preview craft_preview
           New-Item -ItemType Directory -Force preview | Out-Null
           ./build/release/arc_preview.exe preview
+          ./build/release/craft_preview.exe preview
 
       - name: Get game data (esp)
         uses: actions/download-artifact@v4

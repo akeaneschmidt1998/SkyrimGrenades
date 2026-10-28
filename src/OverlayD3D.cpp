@@ -17,8 +17,12 @@
 
 #include "ArcDraw.h"
 #include "ArcState.h"
+#include "CraftUI.h"
 #include "Config.h"
 #include "OverlayD3D.h"
+
+#include <algorithm>
+#include <chrono>
 
 namespace
 {
@@ -45,28 +49,113 @@ namespace
 		return SUCCEEDED(hr);
 	}
 
-	void RenderArc()
+	// The bomb-making menu's own state (selections survive closing and reopening).
+	CraftUI::State g_menu;
+	float          g_cursorX = 0.0f, g_cursorY = 0.0f;
+	std::chrono::steady_clock::time_point g_lastFrame = std::chrono::steady_clock::now();
+
+	// Screen size from the swap chain (we don't use the Win32 backend: it would read the real OS
+	// cursor, which Skyrim keeps hidden at the centre; the menu has its own cursor).
+	ImVec2 ScreenSize()
 	{
-		if (!g_imguiReady || (!Config::showArc && !Config::showChargeMeter)) {
+		DXGI_SWAP_CHAIN_DESC desc{};
+		if (SUCCEEDED(g_swapChain->GetDesc(&desc)) && desc.BufferDesc.Width && desc.BufferDesc.Height) {
+			return { static_cast<float>(desc.BufferDesc.Width), static_cast<float>(desc.BufferDesc.Height) };
+		}
+		return { 1920.0f, 1080.0f };
+	}
+
+	// Feeds the input the game side collected into ImGui (menu open only).
+	void FeedMenuInput(ImGuiIO& io, const ImVec2& a_size)
+	{
+		std::vector<CraftShared::InputEvent> events;
+		{
+			std::scoped_lock l(CraftShared::lock);
+			events.swap(CraftShared::events);
+		}
+		using K = CraftShared::InputEvent::Kind;
+		for (const auto& e : events) {
+			switch (e.kind) {
+			case K::kMouseDelta:
+				g_cursorX = std::clamp(g_cursorX + e.a * CraftShared::mouseSensitivity, 0.0f, a_size.x - 1.0f);
+				g_cursorY = std::clamp(g_cursorY + e.b * CraftShared::mouseSensitivity, 0.0f, a_size.y - 1.0f);
+				io.AddMousePosEvent(g_cursorX, g_cursorY);
+				break;
+			case K::kMouseButton:
+				io.AddMouseButtonEvent(e.key, e.down);
+				break;
+			case K::kWheel:
+				io.AddMouseWheelEvent(0.0f, e.a);
+				break;
+			case K::kKey:
+				io.AddKeyEvent(static_cast<ImGuiKey>(e.key), e.down);
+				break;
+			}
+		}
+	}
+
+	void Render()
+	{
+		if (!g_imguiReady) {
 			return;
 		}
+		const bool menu = CraftShared::open;
 		const auto frame = ArcState::Snapshot();
-		if (!frame.active) {
-			return;  // skip the ImGui frame entirely when not winding up
+		const bool arc = frame.active && (Config::showArc || Config::showChargeMeter);
+		if (!menu && !arc) {
+			return;  // skip the ImGui frame entirely when there's nothing to draw
+		}
+
+		auto&      io = ImGui::GetIO();
+		const auto now = std::chrono::steady_clock::now();
+		io.DeltaTime = std::clamp(std::chrono::duration<float>(now - g_lastFrame).count(), 1.0f / 1000.0f, 0.25f);
+		g_lastFrame = now;
+		io.DisplaySize = ScreenSize();
+
+		if (menu) {
+			if (CraftShared::justOpened.exchange(false)) {
+				g_cursorX = io.DisplaySize.x * 0.5f;
+				g_cursorY = io.DisplaySize.y * 0.5f;
+				io.AddMousePosEvent(g_cursorX, g_cursorY);
+				g_menu.firstFrame = true;
+			}
+			io.ConfigFlags &= ~(ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange);
+			io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
+			io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
+			io.MouseDrawCursor = true;
+			FeedMenuInput(io, io.DisplaySize);
+		} else {
+			io.ConfigFlags |= ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoMouseCursorChange;
+			io.ConfigFlags &= ~(ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad);
+			io.MouseDrawCursor = false;
 		}
 
 		ImGui_ImplDX11_NewFrame();
-		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 
-		ArcDraw::Style style;
-		style.showArc = Config::showArc;
-		style.thickness = Config::arcThickness;
-		style.opacity = Config::arcOpacity;
-		style.showRing = Config::showBlastRing;
-		style.showMeter = Config::showChargeMeter;
-		const ImVec2 size = ImGui::GetIO().DisplaySize;
-		ArcDraw::Draw(ImGui::GetBackgroundDrawList(), size.x, size.y, frame, style);
+		if (menu) {
+			CraftModel::Model model;
+			{
+				std::scoped_lock l(CraftShared::lock);
+				model = CraftShared::model;
+			}
+			auto result = CraftUI::Draw(model, g_menu, io.DisplaySize.x, io.DisplaySize.y);
+			if (!result.requests.empty()) {
+				std::scoped_lock l(CraftShared::lock);
+				CraftShared::requests.insert(CraftShared::requests.end(), result.requests.begin(), result.requests.end());
+			}
+			if (result.close) {
+				CraftShared::closeRequested = true;
+			}
+		} else {
+			ArcDraw::Style style;
+			style.showArc = Config::showArc;
+			style.thickness = Config::arcThickness;
+			style.opacity = Config::arcOpacity;
+			style.showRing = Config::showBlastRing;
+			style.showMeter = Config::showChargeMeter;
+			ArcDraw::Draw(ImGui::GetBackgroundDrawList(), io.DisplaySize.x, io.DisplaySize.y, frame, style);
+		}
 
 		ImGui::Render();
 
@@ -81,13 +170,17 @@ namespace
 		g_context->OMSetRenderTargets(1, &prevRtv, prevDsv);
 		if (prevRtv) prevRtv->Release();
 		if (prevDsv) prevDsv->Release();
+
+		if (menu && CraftShared::onFrame) {
+			CraftShared::onFrame();  // lets the game side act on crafting / closing while paused
+		}
 	}
 
 	HRESULT STDMETHODCALLTYPE HookedPresent(IDXGISwapChain* a_this, UINT a_syncInterval, UINT a_flags)
 	{
 		// The vtable is shared by every DXGI swap chain in the process; only draw on the game's.
 		if (a_this == g_swapChain) {
-			RenderArc();
+			Render();
 		}
 		return g_originalPresent(a_this, a_syncInterval, a_flags);
 	}

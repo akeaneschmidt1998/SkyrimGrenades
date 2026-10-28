@@ -58,6 +58,7 @@ namespace Config
 	inline std::string explosionModel[Bombs::kPayloads]{
 		"Skyrim.esm|088109",  // frag: FallingDustExplosion01
 		"Skyrim.esm|070E5C",  // fire: TrapOilLampExplosion01
+		"Skyrim.esm|044089",  // frost: ExplosionRuneFrost01
 		"Skyrim.esm|01A13C",  // oil: FXdustDropSmExplosion (a splash)
 		"Skyrim.esm|0D5100",  // smoke: FXDragonDustExplosion
 		"Skyrim.esm|0D13E8",  // fear: ExplosionShockMass01 (flash)
@@ -70,13 +71,13 @@ namespace Config
 	// --- Crafting ---
 	struct Ingredient
 	{
-		std::string form;   // "Plugin.esm|HEXID"
-		int         count = 1;
-		int         group = 0;  // trigger (for trigger ingredients) or payload (for fillings)
+		std::vector<std::string> forms;  // "Plugin.esm|HEXID"; more than one = any of them ("A or B")
+		int                      count = 1;
+		int                      group = 0;  // trigger (for trigger ingredients) or payload (for fillings)
 	};
 	inline std::vector<std::string> containers;         // any one (sContainer)
-	inline std::vector<Ingredient>  triggerIngredients;  // all of them (sImpactIngredient, ...)
-	inline std::vector<Ingredient>  fillings;            // any one per payload (sFragFilling, ...)
+	inline std::vector<Ingredient>  triggerIngredients;  // every line needed; "or" = alternatives
+	inline std::vector<Ingredient>  fillings;            // any one line per payload (sFragFilling, ...)
 
 	// --- Bottle return: drinking wine gives the empty bottle back ---
 	inline bool returnEmptyBottles = true;

@@ -44,12 +44,20 @@ namespace
 		return parts;
 	}
 
-	// "Plugin.esm|ID, 2" -> form, count
+	// "Plugin.esm|ID or Plugin.esm|ID, 2" -> alternatives, count
 	Config::Ingredient ParseIngredient(const std::string& a_val, int a_group)
 	{
 		const auto parts = SplitComma(a_val);
 		Config::Ingredient i;
-		i.form = Unquote(parts[0]);
+		std::string alts = Unquote(parts[0]) + " or ";
+		for (std::size_t at; (at = Lower(alts).find(" or ")) != std::string::npos; alts.erase(0, at + 4)) {
+			if (auto f = Trim(alts.substr(0, at)); !f.empty()) {
+				i.forms.push_back(f);
+			}
+		}
+		if (i.forms.empty()) {
+			throw std::invalid_argument("no form");
+		}
 		i.count = parts.size() > 1 ? std::clamp(std::stoi(parts[1]), 1, 99) : 1;
 		i.group = a_group;
 		return i;
@@ -226,13 +234,15 @@ namespace
 		};
 		using B = Bombs::Trigger;
 		const std::vector<Ingredient> triggerDefaults{
-			{ "Skyrim.esm|03AD5E", 1, B::kImpact },     // Fire Salts
-			{ "Skyrim.esm|033761", 1, B::kShortFuse },  // Paper Roll
-			{ "Skyrim.esm|033760", 1, B::kShortFuse },  // Charcoal
-			{ "Skyrim.esm|033761", 2, B::kLongFuse },   // Paper Roll
-			{ "Skyrim.esm|033760", 1, B::kLongFuse },   // Charcoal
-			{ "Skyrim.esm|034CD6", 1, B::kTripwire },   // Linen Wrap
-			{ "Skyrim.esm|03AD5E", 1, B::kTripwire },   // Fire Salts
+			{ { "Skyrim.esm|03AD5E" }, 1, B::kImpact },     // Fire Salts
+			{ { "Skyrim.esm|033761" }, 1, B::kShortFuse },  // Paper Roll
+			{ { "Skyrim.esm|033760" }, 1, B::kShortFuse },  // Charcoal
+			{ { "Skyrim.esm|033761" }, 2, B::kLongFuse },   // Paper Roll
+			{ { "Skyrim.esm|033760" }, 1, B::kLongFuse },   // Charcoal
+			// the wire: Linen Wrap, Leather Strips or Leather
+			{ { "Skyrim.esm|034CD6", "Skyrim.esm|0800E4", "Skyrim.esm|0DB5D2" }, 1, B::kTripwire },
+			// the igniter: Fire Salts, or Dwemer clockwork (a gear or a gyro)
+			{ { "Skyrim.esm|03AD5E", "Skyrim.esm|0C8861", "Skyrim.esm|0C8868" }, 1, B::kTripwire },
 		};
 		for (int t = 0; t < Bombs::kTriggers; ++t) {
 			if (noneFor(triggerIngredients, t)) {
@@ -243,33 +253,36 @@ namespace
 		}
 		using P = Bombs::Payload;
 		const std::vector<Ingredient> fillingDefaults{
-			{ "HearthFires.esm|00300F", 1, P::kFrag },        // Nails
-			{ "HearthFires.esm|00306C", 1, P::kFrag },        // Quarried Stone
-			{ "Skyrim.esm|067181", 1, P::kFrag },             // Soul Gem Fragment (all five)
-			{ "Skyrim.esm|067182", 1, P::kFrag },
-			{ "Skyrim.esm|067183", 1, P::kFrag },
-			{ "Skyrim.esm|067184", 1, P::kFrag },
-			{ "Skyrim.esm|067185", 1, P::kFrag },
-			{ "Skyrim.esm|03AD5E", 1, P::kFire },             // Fire Salts
-			{ "Skyrim.esm|052695", 2, P::kFire },             // Charred Skeever Hide
-			{ "Dragonborn.esm|01CD74", 2, P::kFire },         // Ash Creep Cluster
-			{ "Dragonborn.esm|01CD6E", 2, P::kFire },         // Burnt Spriggan Wood
-			{ "Dragonborn.esm|016E26", 2, P::kFire },         // Spawn Ash
-			{ "Skyrim.esm|0F11C0", 1, P::kOil },              // Dwarven Oil
-			{ "Skyrim.esm|03AD72", 1, P::kOil },              // Troll Fat
-			{ "Dragonborn.esm|01CD71", 2, P::kOil },          // Ash Hopper Jelly
-			{ "Skyrim.esm|033760", 1, P::kSmoke },            // Charcoal
-			{ "Skyrim.esm|03F7F8", 2, P::kSmoke },            // Tundra Cotton
-			{ "Skyrim.esm|03AD63", 1, P::kFear },             // Ectoplasm
-			{ "Skyrim.esm|03AD73", 1, P::kFear },             // Glow Dust
-			{ "Skyrim.esm|02F44C", 2, P::kFear },             // Nightshade
-			{ "Skyrim.esm|0516C8", 2, P::kFear },             // Deathbell
-			{ "Skyrim.esm|03AD66", 1, P::kFrenzy },           // Hagraven Feathers
-			{ "Skyrim.esm|03AD5D", 1, P::kFrenzy },           // Falmer Ear
-			{ "Skyrim.esm|06BC10", 2, P::kFrenzy },           // Powdered Mammoth Tusk
-			{ "Skyrim.esm|03AD60", 1, P::kConcussion },       // Void Salts
-			{ "Skyrim.esm|03AD61", 1, P::kConcussion },       // Briar Heart
-			{ "Skyrim.esm|034CDD", 2, P::kConcussion },       // Bone Meal
+			{ { "HearthFires.esm|00300F" }, 1, P::kFrag },        // Nails
+			{ { "HearthFires.esm|00306C" }, 1, P::kFrag },        // Quarried Stone
+			{ { "Skyrim.esm|067181" }, 1, P::kFrag },             // Soul Gem Fragment (all five)
+			{ { "Skyrim.esm|067182" }, 1, P::kFrag },
+			{ { "Skyrim.esm|067183" }, 1, P::kFrag },
+			{ { "Skyrim.esm|067184" }, 1, P::kFrag },
+			{ { "Skyrim.esm|067185" }, 1, P::kFrag },
+			{ { "Skyrim.esm|03AD5E" }, 1, P::kFire },             // Fire Salts
+			{ { "Skyrim.esm|052695" }, 2, P::kFire },             // Charred Skeever Hide
+			{ { "Dragonborn.esm|01CD74" }, 2, P::kFire },         // Ash Creep Cluster
+			{ { "Dragonborn.esm|01CD6E" }, 2, P::kFire },         // Burnt Spriggan Wood
+			{ { "Dragonborn.esm|016E26" }, 2, P::kFire },         // Spawn Ash
+			{ { "Skyrim.esm|03AD5F" }, 1, P::kFrost },            // Frost Salts
+			{ { "Skyrim.esm|03AD6A" }, 1, P::kFrost },            // Ice Wraith Teeth
+			{ { "Skyrim.esm|034D32" }, 2, P::kFrost },            // Frost Mirriam
+			{ { "Skyrim.esm|0F11C0" }, 1, P::kOil },              // Dwarven Oil
+			{ { "Skyrim.esm|03AD72" }, 1, P::kOil },              // Troll Fat
+			{ { "Dragonborn.esm|01CD71" }, 2, P::kOil },          // Ash Hopper Jelly
+			{ { "Skyrim.esm|033760" }, 1, P::kSmoke },            // Charcoal
+			{ { "Skyrim.esm|03F7F8" }, 2, P::kSmoke },            // Tundra Cotton
+			{ { "Skyrim.esm|03AD63" }, 1, P::kFear },             // Ectoplasm
+			{ { "Skyrim.esm|03AD73" }, 1, P::kFear },             // Glow Dust
+			{ { "Skyrim.esm|02F44C" }, 2, P::kFear },             // Nightshade
+			{ { "Skyrim.esm|0516C8" }, 2, P::kFear },             // Deathbell
+			{ { "Skyrim.esm|03AD66" }, 1, P::kFrenzy },           // Hagraven Feathers
+			{ { "Skyrim.esm|03AD5D" }, 1, P::kFrenzy },           // Falmer Ear
+			{ { "Skyrim.esm|06BC10" }, 2, P::kFrenzy },           // Powdered Mammoth Tusk
+			{ { "Skyrim.esm|03AD60" }, 1, P::kConcussion },       // Void Salts
+			{ { "Skyrim.esm|03AD61" }, 1, P::kConcussion },       // Briar Heart
+			{ { "Skyrim.esm|034CDD" }, 2, P::kConcussion },       // Bone Meal
 		};
 		for (int p = 0; p < Bombs::kPayloads; ++p) {
 			if (noneFor(fillings, p)) {
@@ -292,10 +305,12 @@ namespace
 				L("Skyrim.esm|09AF0A", B::kTripwire, P::kFrag, S::kModerate, 10, 1),
 				// apothecaries
 				L("Skyrim.esm|09AF13", B::kImpact, P::kFire, S::kMild, 1, 2),
+				L("Skyrim.esm|09AF13", B::kImpact, P::kFrost, S::kMild, 5, 2),
 				L("Skyrim.esm|09AF13", B::kImpact, P::kFear, S::kMild, 5, 1),
 				L("Skyrim.esm|09AF13", B::kImpact, P::kFrenzy, S::kMild, 10, 1),
 				// court wizards' scroll stock
 				L("Skyrim.esm|105240", B::kImpact, P::kConcussion, S::kModerate, 10, 1),
+				L("Skyrim.esm|105240", B::kShortFuse, P::kFrost, S::kModerate, 10, 1),
 				L("Skyrim.esm|105240", B::kImpact, P::kFear, S::kModerate, 15, 1),
 				// bandit and Forsworn random loot
 				L("Skyrim.esm|10E0DD", B::kImpact, P::kFire, S::kMild, 1, 1),

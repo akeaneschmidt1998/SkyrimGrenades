@@ -4,6 +4,7 @@
 #include "Ballistics.h"
 #include "Config.h"
 #include "Crafting.h"
+#include "CraftShared.h"
 #include "Forms.h"
 
 #include <xmmintrin.h>
@@ -72,8 +73,8 @@ namespace
 
 		RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>*) override
 		{
-			if (!a_event) {
-				return RE::BSEventNotifyControl::kContinue;
+			if (!a_event || CraftShared::open) {
+				return RE::BSEventNotifyControl::kContinue;  // the bomb-making menu has the input
 			}
 			for (auto* e = *a_event; e; e = e->next) {
 				auto* button = e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton ? e->AsButtonEvent() : nullptr;

@@ -1,13 +1,13 @@
 #include "Crafting.h"
 
 #include "Config.h"
+#include "CraftShared.h"
 #include "Forms.h"
+
+#include <imgui.h>
 
 namespace
 {
-	constexpr std::size_t  kPageSize = 8;      // entries per message box before "More..."
-	constexpr std::uint8_t kButtonOffset = 4;  // added by the engine to the pressed button index
-
 	void Notify(const std::string& a_msg)
 	{
 		logger::info("{}", a_msg);
@@ -16,19 +16,15 @@ namespace
 				console->Print("[Fire Pots] %s", a_msg.c_str());
 			}
 		}
-		RE::SendHUDMessage::ShowHUDMessage(a_msg.c_str());
+		if (Config::showNotification) {
+			RE::SendHUDMessage::ShowHUDMessage(a_msg.c_str());
+		}
 	}
 
 	bool HasName(const RE::TESForm* a_form)
 	{
 		const char* n = a_form ? a_form->GetName() : nullptr;
 		return n && *n;
-	}
-
-	std::string NameOf(const RE::TESForm* a_form)
-	{
-		const char* n = a_form ? a_form->GetName() : nullptr;
-		return n && *n ? n : fmt::format("{:08X}", a_form ? a_form->GetFormID() : 0u);
 	}
 
 	using Inv = std::map<RE::TESBoundObject*, int>;
@@ -69,393 +65,272 @@ namespace
 		return out;
 	}
 
-	int ContainersHeld(const Inv& a_inv)
+	// --- What the menu shows ----------------------------------------------------------------
+	CraftModel::Model BuildModel(RE::PlayerCharacter* a_player)
 	{
-		int n = 0;
-		for (auto* c : Containers()) {
-			n += Have(a_inv, c);
-		}
-		return n;
-	}
-
-	struct Part
-	{
-		RE::TESBoundObject* form = nullptr;
-		int                 count = 1;
-	};
-
-	std::vector<Part> TriggerParts(int a_trigger)
-	{
-		std::vector<Part> out;
-		for (const auto& i : Config::triggerIngredients) {
-			if (i.group == a_trigger) {
-				if (auto* obj = Resolve(i.form)) {
-					out.push_back({ obj, i.count });
-				}
-			}
-		}
-		return out;
-	}
-
-	std::vector<Part> Fillings(int a_payload)
-	{
-		std::vector<Part> out;
-		for (const auto& i : Config::fillings) {
-			if (i.group == a_payload) {
-				if (auto* obj = Resolve(i.form); obj && std::ranges::none_of(out, [&](const Part& p) { return p.form == obj; })) {
-					out.push_back({ obj, i.count });
-				}
-			}
-		}
-		return out;
-	}
-
-	// What one bomb takes (besides a container): the trigger's parts and the filling, times the
-	// strength (mild 1x, moderate 2x, major 3x), with the same item merged (Fire Salts twice).
-	std::vector<Part> Recipe(int a_trigger, const Part& a_filling, int a_strength)
-	{
-		std::vector<Part> out;
-		auto add = [&](RE::TESBoundObject* a_form, int a_count) {
-			for (auto& p : out) {
-				if (p.form == a_form) {
-					p.count += a_count;
-					return;
-				}
-			}
-			out.push_back({ a_form, a_count });
+		CraftModel::Model m;
+		const auto        inv = Inventory(a_player);
+		auto note = [&](RE::TESBoundObject* a_obj) {
+			const auto id = a_obj->GetFormID();
+			m.items[id] = { a_obj->GetName(), Have(inv, a_obj) };
+			return id;
 		};
-		const int mult = a_strength + 1;
-		for (const auto& p : TriggerParts(a_trigger)) {
-			add(p.form, p.count * mult);
+		for (auto* c : Containers()) {
+			m.containers += Have(inv, c);
 		}
-		add(a_filling.form, a_filling.count * mult);
-		return out;
-	}
-
-	int CanMake(const Inv& a_inv, const std::vector<Part>& a_recipe)
-	{
-		int n = ContainersHeld(a_inv);
-		for (const auto& p : a_recipe) {
-			n = (std::min)(n, Have(a_inv, p.form) / p.count);
-		}
-		return (std::max)(n, 0);
-	}
-
-	std::string Describe(const std::vector<Part>& a_parts, const Inv* a_inv)
-	{
-		std::string s;
-		for (const auto& p : a_parts) {
-			if (!s.empty()) {
-				s += ", ";
+		for (const auto& ing : Config::triggerIngredients) {
+			if (ing.group < 0 || ing.group >= Bombs::kT) {
+				continue;
 			}
-			s += p.count > 1 ? fmt::format("{} {}", p.count, NameOf(p.form)) : NameOf(p.form);
-			if (a_inv) {
-				s += fmt::format(" (have {})", Have(*a_inv, p.form));
+			CraftModel::Line line;
+			for (const auto& ref : ing.forms) {
+				if (auto* obj = Resolve(ref)) {
+					line.alts.push_back({ note(obj), ing.count });
+				}
+			}
+			if (!line.alts.empty()) {
+				m.trigger[ing.group].push_back(std::move(line));
 			}
 		}
-		return s;
+		for (const auto& ing : Config::fillings) {
+			if (ing.group < 0 || ing.group >= Bombs::kP) {
+				continue;
+			}
+			for (const auto& ref : ing.forms) {
+				if (auto* obj = Resolve(ref)) {
+					const auto id = note(obj);
+					auto&      list = m.fillings[ing.group];
+					if (std::ranges::none_of(list, [&](const CraftModel::Alt& a) { return a.id == id; })) {
+						list.push_back({ id, ing.count });
+					}
+				}
+			}
+		}
+		const auto& types = Forms::Types();
+		for (int i = 0; i < Bombs::kCount && i < static_cast<int>(types.size()); ++i) {
+			m.names[i] = types[i].name;
+			m.carried[i] = types[i].item ? Have(inv, types[i].item) : 0;
+		}
+		return m;
 	}
 
-	// Things you can use first, the rest after (stable, so the INI order holds within each part).
-	template <class T, class Usable>
-	void UsableFirst(std::vector<T>& a_list, Usable&& a_usable)
+	void Publish(RE::PlayerCharacter* a_player)
 	{
-		std::ranges::stable_partition(a_list, a_usable);
+		auto m = BuildModel(a_player);
+		std::scoped_lock l(CraftShared::lock);
+		CraftShared::model = std::move(m);
 	}
 
-	// --- A message box with a list of choices --------------------------------------------
-	// onPick gets the chosen entry's index into entries, or -1 for Back.
-		struct ListBox
+	// --- Crafting ---------------------------------------------------------------------------
+	void Make(RE::PlayerCharacter* a_player, const CraftShared::Request& a_req)
 	{
-		std::string              title;
-		std::vector<std::string> entries;
-		bool                     back = false;
-		std::function<void(int)> onPick;
-		std::size_t              page = 0;
-	};
-
-	class Callback final : public RE::IMessageBoxCallback
-	{
-	public:
-		explicit Callback(std::function<void(std::uint8_t)> a_fn) :
-			fn_(std::move(a_fn)) {}
-
-		void Run(std::uint8_t a_button) override
-		{
-			// Run the follow-up after the message box has closed.
-			auto fn = fn_;
-			SKSE::GetTaskInterface()->AddTask([fn, a_button]() { fn(a_button); });
-		}
-
-	private:
-		std::function<void(std::uint8_t)> fn_;
-	};
-
-	void Show(std::shared_ptr<ListBox> a_box)
-	{
-		const std::size_t first = a_box->page * kPageSize;
-		const std::size_t last = (std::min)(a_box->entries.size(), first + kPageSize);
-		const bool        more = a_box->entries.size() > kPageSize;
-
-		// buttons: entries on this page, [More...], [Back], Cancel
-		std::vector<std::string> labels;
-		std::vector<int>         action;  // >= 0 entry index, -1 back, -2 more, -3 cancel
-		for (std::size_t i = first; i < last; ++i) {
-			labels.push_back(a_box->entries[i]);
-			action.push_back(static_cast<int>(i));
-		}
-		if (more) {
-			labels.push_back("More...");
-			action.push_back(-2);
-		}
-		if (a_box->back) {
-			labels.push_back("Back");
-			action.push_back(-1);
-		}
-		labels.push_back("Cancel");
-		action.push_back(-3);
-
-		auto* data = RE::UIMessageDataFactory::Create<RE::MessageBoxData>();
-		if (!data) {
-			logger::error("Could not create a message box");
+		const int bomb = Bombs::Index(a_req.trigger, a_req.payload, a_req.strength);
+		auto&     type = Forms::Types()[bomb];
+		if (!type.Ready()) {
 			return;
 		}
-		data->bodyText = a_box->title.c_str();
-		for (const auto& l : labels) {
-			data->buttonText.push_back(RE::BSString(l.c_str()));
-		}
-		data->warningType = 10;
-		data->buttonPressOffset = kButtonOffset;
-		data->verticalButtons = true;
-		data->isCancellable = true;  // Escape / Tab = Cancel
-		data->cancelButtonIndex = static_cast<std::int32_t>(labels.size() - 1);
-		data->callback = RE::BSTSmartPointer<RE::IMessageBoxCallback>(new Callback([a_box, action](std::uint8_t a_button) {
-			const int idx = static_cast<int>(a_button) - kButtonOffset;
-			if (idx < 0 || idx >= static_cast<int>(action.size())) {
-				return;  // cancelled
-			}
-			switch (const int act = action[idx]) {
-			case -3:
-				return;
-			case -2:
-				a_box->page = (a_box->page + 1) * kPageSize < a_box->entries.size() ? a_box->page + 1 : 0;
-				Show(a_box);
-				return;
-			case -1:
-				a_box->onPick(-1);
-				return;
-			default:
-				a_box->onPick(act);
-				return;
-			}
-		}));
-		RE::MessageBoxMenu::QueueMessage(data);
-	}
-
-	// --- The steps: trigger -> payload -> (filling) -> strength -> amount -------------------
-	void ChooseTrigger();
-	void ChoosePayload(int a_trigger);
-	void ChooseFilling(int a_trigger, int a_payload);
-	void ChooseStrength(int a_trigger, int a_payload, Part a_filling);
-
-	void Make(int a_bomb, const std::vector<Part>& a_recipe, int a_wanted)
-	{
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		auto& type = Forms::Types()[a_bomb];
-		if (!player || !type.Ready()) {
-			return;
-		}
-		// count again: the inventory may have changed while the menu was up
-		const auto inv = Inventory(player);
-		const int  n = (std::min)(a_wanted, CanMake(inv, a_recipe));
+		// decide again from what's in the pack right now
+		const auto model = BuildModel(a_player);
+		const auto res = CraftModel::Resolve(model, a_req.trigger, a_req.payload, a_req.filling, a_req.strength);
+		const int  n = (std::min)(a_req.qty, res.canMake);
 		if (n <= 0) {
-			Notify("You no longer have what that takes.");
+			Notify("You don't have what that takes.");
 			return;
 		}
-		int left = n;
+		const auto inv = Inventory(a_player);
+		int        left = n;
 		for (auto* c : Containers()) {
 			const int take = (std::min)(left, Have(inv, c));
 			if (take > 0) {
-				player->RemoveItem(c, take, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+				a_player->RemoveItem(c, take, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 				left -= take;
 			}
 		}
-		for (const auto& p : a_recipe) {
-			player->RemoveItem(p.form, p.count * n, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+		for (const auto& need : res.needs) {
+			if (auto* obj = RE::TESForm::LookupByID<RE::TESBoundObject>(need.id)) {
+				a_player->RemoveItem(obj, need.need * n, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+			}
 		}
-		player->AddObjectToContainer(type.item, nullptr, n, nullptr);
+		a_player->AddObjectToContainer(type.item, nullptr, n, nullptr);
 		RE::PlaySound("UIAlchemyCreatePotion");
 		Notify(n == 1 ? fmt::format("Made a {}", type.name) : fmt::format("Made {} x {}", n, type.name));
 	}
 
-	void ChooseAmount(int a_trigger, int a_payload, Part a_filling, int a_strength)
-	{
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		if (!player) {
-			return;
-		}
-		const int  bomb = Bombs::Index(a_trigger, a_payload, a_strength);
-		const auto recipe = Recipe(a_trigger, a_filling, a_strength);
-		const auto inv = Inventory(player);
-		const int  max = CanMake(inv, recipe);
-		const auto& name = Forms::Types()[bomb].name;
+	// --- Opening and closing: the game is paused and its controls are off while it's up ------
+	std::uint32_t     g_savedEnabled = 0;
+	std::uint32_t     g_savedStored = 0;
+	std::atomic<bool> g_taskQueued{ false };
 
-		auto box = std::make_shared<ListBox>();
-		box->back = true;
-		std::vector<int> amounts;
-		if (max <= 0) {
-			// just information: what it takes and what's missing
-			box->title = fmt::format("A {} takes an empty container (you have {}) and {}.", name, ContainersHeld(inv),
-				Describe(recipe, &inv));
-		} else if (max == 1) {
-			Make(bomb, recipe, 1);
+	void Close()
+	{
+		if (!CraftShared::open) {
 			return;
-		} else {
-			amounts.push_back(1);
-			if (max > 5) {
-				amounts.push_back(5);
-			}
-			amounts.push_back(max);
-			box->title = fmt::format("How many {}? (up to {})", name, max);
-			for (const int a : amounts) {
-				box->entries.push_back(a == max ? fmt::format("All ({})", a) : std::to_string(a));
-			}
 		}
-		box->onPick = [=](int i) {
-			if (i < 0) {
-				ChooseStrength(a_trigger, a_payload, a_filling);
-			} else {
-				Make(bomb, recipe, amounts[i]);
-			}
-		};
-		Show(box);
+		CraftShared::open = false;
+		if (auto* controls = RE::ControlMap::GetSingleton()) {
+			controls->SetControlsState(g_savedEnabled, g_savedStored);
+		}
+		if (auto* ui = RE::UI::GetSingleton(); ui && ui->numPausesGame > 0) {
+			--ui->numPausesGame;
+		}
+		logger::info("Bomb-making menu closed");
 	}
 
-	void ChooseStrength(int a_trigger, int a_payload, Part a_filling)
+	// Runs on the game's main thread (queued from the overlay's frame callback).
+	void ProcessMenu()
 	{
+		g_taskQueued = false;
 		auto* player = RE::PlayerCharacter::GetSingleton();
-		if (!player) {
+		if (!player || !CraftShared::open) {
 			return;
 		}
-		const auto inv = Inventory(player);
-		auto       box = std::make_shared<ListBox>();
-		box->title = fmt::format("{} {} bomb with {}: how strong?", Bombs::kPayloadNames[a_payload], Bombs::kTriggerNames[a_trigger],
-			NameOf(a_filling.form));
-		for (int s = 0; s < Bombs::kStrengths; ++s) {
-			const auto recipe = Recipe(a_trigger, a_filling, s);
-			const int  can = CanMake(inv, recipe);
-			box->entries.push_back(can > 0 ? fmt::format("{} (can make {}): {}", Bombs::kStrengthNames[s], can, Describe(recipe, nullptr)) :
-			                                 fmt::format("{}: {}", Bombs::kStrengthNames[s], Describe(recipe, nullptr)));
+		std::vector<CraftShared::Request> requests;
+		{
+			std::scoped_lock l(CraftShared::lock);
+			requests.swap(CraftShared::requests);
 		}
-		box->back = true;
-		box->onPick = [=](int i) {
-			if (i < 0) {
-				// back to the filling list if there was one to choose from, else to payloads
-				const auto inv2 = Inventory(RE::PlayerCharacter::GetSingleton());
-				const auto fills = Fillings(a_payload);
-				const auto usable = std::ranges::count_if(fills, [&](const Part& f) { return Have(inv2, f.form) >= f.count; });
-				if (usable > 1 || usable == 0) {
-					ChooseFilling(a_trigger, a_payload);
-				} else {
-					ChoosePayload(a_trigger);
+		for (const auto& r : requests) {
+			Make(player, r);
+		}
+		if (!requests.empty()) {
+			Publish(player);
+		}
+		if (CraftShared::closeRequested.exchange(false)) {
+			Close();
+		}
+	}
+
+	// Called by the overlay every frame while the menu is up (the game itself is paused).
+	void OnFrame()
+	{
+		bool pending = CraftShared::closeRequested.load();
+		{
+			std::scoped_lock l(CraftShared::lock);
+			pending = pending || !CraftShared::requests.empty();
+		}
+		if (pending && !g_taskQueued.exchange(true)) {
+			SKSE::GetTaskInterface()->AddTask(ProcessMenu);
+		}
+	}
+
+	// --- Input while it's up: everything goes to the menu --------------------------------------
+	constexpr std::uint32_t kMouseOffset = 256;
+
+	int KeyFromScanCode(std::uint32_t a_code)
+	{
+		switch (a_code) {
+		case 200: case 17: return ImGuiKey_UpArrow;      // Up, W
+		case 208: case 31: return ImGuiKey_DownArrow;    // Down, S
+		case 203: case 30: return ImGuiKey_LeftArrow;    // Left, A
+		case 205: case 32: return ImGuiKey_RightArrow;   // Right, D
+		case 28: case 156: case 18: return ImGuiKey_Enter;  // Enter, keypad Enter, E (activate)
+		case 57: return ImGuiKey_Space;
+		case 1: return ImGuiKey_Escape;
+		case 15: return ImGuiKey_Tab;
+		case 14: return ImGuiKey_Backspace;
+		case 42: case 54: return ImGuiKey_LeftShift;
+		default: return ImGuiKey_None;
+		}
+	}
+
+	int KeyFromGamepad(std::uint32_t a_code)
+	{
+		switch (a_code) {
+		case 0x0001: return ImGuiKey_GamepadDpadUp;
+		case 0x0002: return ImGuiKey_GamepadDpadDown;
+		case 0x0004: return ImGuiKey_GamepadDpadLeft;
+		case 0x0008: return ImGuiKey_GamepadDpadRight;
+		case 0x1000: return ImGuiKey_GamepadFaceDown;   // A
+		case 0x2000: return ImGuiKey_GamepadFaceRight;  // B
+		case 0x4000: return ImGuiKey_GamepadFaceLeft;   // X
+		case 0x8000: return ImGuiKey_GamepadFaceUp;     // Y
+		case 0x0100: return ImGuiKey_GamepadL1;
+		case 0x0200: return ImGuiKey_GamepadR1;
+		default: return ImGuiKey_None;
+		}
+	}
+
+	class MenuInput final : public RE::BSTEventSink<RE::InputEvent*>
+	{
+	public:
+		static MenuInput* GetSingleton()
+		{
+			static MenuInput sink;
+			return &sink;
+		}
+
+		RE::BSEventNotifyControl ProcessEvent(RE::InputEvent* const* a_event, RE::BSTEventSource<RE::InputEvent*>*) override
+		{
+			if (!a_event || !CraftShared::open) {
+				return RE::BSEventNotifyControl::kContinue;
+			}
+			std::vector<CraftShared::InputEvent> out;
+			using K = CraftShared::InputEvent::Kind;
+			for (auto* e = *a_event; e; e = e->next) {
+				if (e->GetEventType() == RE::INPUT_EVENT_TYPE::kMouseMove) {
+					auto* m = static_cast<RE::MouseMoveEvent*>(e);
+					out.push_back({ K::kMouseDelta, static_cast<float>(m->mouseInputX), static_cast<float>(m->mouseInputY) });
+					continue;
 				}
-			} else {
-				ChooseAmount(a_trigger, a_payload, a_filling, i);
+				auto* b = e->GetEventType() == RE::INPUT_EVENT_TYPE::kButton ? e->AsButtonEvent() : nullptr;
+				if (!b || !(b->IsDown() || b->IsUp())) {
+					continue;
+				}
+				const bool down = b->IsDown();
+				const auto code = b->GetIDCode();
+				switch (b->GetDevice()) {
+				case RE::INPUT_DEVICE::kMouse:
+					if (code <= 2) {
+						out.push_back({ K::kMouseButton, 0.0f, 0.0f, static_cast<int>(code), down });
+					} else if (down && (code == 8 || code == 9)) {
+						out.push_back({ K::kWheel, code == 8 ? 1.0f : -1.0f });
+					}
+					break;
+				case RE::INPUT_DEVICE::kKeyboard:
+					if (down && code == Config::craftKey && Config::craftKey < kMouseOffset) {
+						CraftShared::closeRequested = true;  // the craft key closes it again
+					} else if (const int k = KeyFromScanCode(code); k != ImGuiKey_None) {
+						out.push_back({ K::kKey, 0.0f, 0.0f, k, down });
+					}
+					break;
+				case RE::INPUT_DEVICE::kGamepad:
+					if (const int k = KeyFromGamepad(code); k != ImGuiKey_None) {
+						out.push_back({ K::kKey, 0.0f, 0.0f, k, down });
+					}
+					break;
+				default:
+					break;
+				}
 			}
-		};
-		Show(box);
-	}
+			if (!out.empty()) {
+				std::scoped_lock l(CraftShared::lock);
+				CraftShared::events.insert(CraftShared::events.end(), out.begin(), out.end());
+			}
+			return RE::BSEventNotifyControl::kContinue;
+		}
 
-	void ChooseFilling(int a_trigger, int a_payload)
-	{
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		if (!player) {
-			return;
-		}
-		const auto inv = Inventory(player);
-		auto       fills = Fillings(a_payload);
-		if (fills.empty()) {
-			Notify(fmt::format("No {} fillings are set up (check [Fillings] in FirePots.ini).", Bombs::kPayloadNames[a_payload]));
-			return;
-		}
-		UsableFirst(fills, [&](const Part& f) { return Have(inv, f.form) >= f.count; });
-		const auto usable = std::ranges::count_if(fills, [&](const Part& f) { return Have(inv, f.form) >= f.count; });
-		if (usable == 1) {
-			ChooseStrength(a_trigger, a_payload, fills.front());  // nothing to choose
-			return;
-		}
-		auto box = std::make_shared<ListBox>();
-		box->title = fmt::format("{} payload: fill it with...", Bombs::kPayloadNames[a_payload]);
-		for (const auto& f : fills) {
-			const int have = Have(inv, f.form);
-			box->entries.push_back(f.count == 1 ? fmt::format("{} ({})", NameOf(f.form), have) :
-			                                      fmt::format("{} x{} ({})", NameOf(f.form), f.count, have));
-		}
-		box->back = true;
-		box->onPick = [a_trigger, a_payload, fills](int i) {
-			if (i < 0) {
-				ChoosePayload(a_trigger);
-			} else {
-				ChooseStrength(a_trigger, a_payload, fills[i]);
-			}
-		};
-		Show(box);
-	}
-
-	void ChoosePayload(int a_trigger)
-	{
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		if (!player) {
-			return;
-		}
-		const auto inv = Inventory(player);
-		auto       box = std::make_shared<ListBox>();
-		box->title = fmt::format("{} bomb: what payload?", Bombs::kTriggerNames[a_trigger]);
-		for (int p = 0; p < Bombs::kPayloads; ++p) {
-			int best = 0;  // most mild bombs any one filling allows
-			for (const auto& f : Fillings(p)) {
-				best = (std::max)(best, CanMake(inv, Recipe(a_trigger, f, Bombs::kMild)));
-			}
-			box->entries.push_back(best > 0 ? fmt::format("{} (can make {})", Bombs::kPayloadNames[p], best) :
-			                                  std::string(Bombs::kPayloadNames[p]));
-		}
-		box->back = true;
-		box->onPick = [a_trigger](int i) {
-			if (i < 0) {
-				ChooseTrigger();
-			} else {
-				ChooseFilling(a_trigger, i);
-			}
-		};
-		Show(box);
-	}
-
-	void ChooseTrigger()
-	{
-		auto* player = RE::PlayerCharacter::GetSingleton();
-		if (!player) {
-			return;
-		}
-		const auto inv = Inventory(player);
-		auto       box = std::make_shared<ListBox>();
-		box->title = fmt::format("Make a bomb: what kind? (empty containers: {})", ContainersHeld(inv));
-		static constexpr const char* kLabels[Bombs::kTriggers] = { "Thrown, impact", "Thrown, short fuse", "Thrown, long fuse", "Tripwire (placed)" };
-		for (int t = 0; t < Bombs::kTriggers; ++t) {
-			box->entries.push_back(fmt::format("{}: {}", kLabels[t], Describe(TriggerParts(t), &inv)));
-		}
-		box->onPick = [](int i) {
-			if (i >= 0) {
-				ChoosePayload(i);
-			}
-		};
-		Show(box);
-	}
+	private:
+		MenuInput() = default;
+	};
 }
 
 namespace Crafting
 {
+	void Register()
+	{
+		CraftShared::onFrame = OnFrame;
+		if (auto* devices = RE::BSInputDeviceManager::GetSingleton()) {
+			devices->AddEventSink(MenuInput::GetSingleton());
+		}
+	}
+
+	bool IsOpen() { return CraftShared::open; }
+
 	void Open(RE::PlayerCharacter* a_player)
 	{
+		if (CraftShared::open) {
+			return;
+		}
 		if (!Forms::Ready()) {
 			Notify("FirePots.esp isn't loaded.");
 			return;
@@ -464,6 +339,25 @@ namespace Crafting
 			Notify("You can't make bombs in combat.");
 			return;
 		}
-		ChooseTrigger();
+		Publish(a_player);
+		{
+			std::scoped_lock l(CraftShared::lock);
+			CraftShared::events.clear();
+			CraftShared::requests.clear();
+		}
+		CraftShared::closeRequested = false;
+		CraftShared::justOpened = true;
+		// pause the game and turn its controls off (restored exactly on close)
+		if (auto* controls = RE::ControlMap::GetSingleton()) {
+			controls->GetControlsState(g_savedEnabled, g_savedStored);
+			controls->ToggleControls(RE::ControlMap::UEFlag::kAll, false, false);
+		}
+		if (auto* ui = RE::UI::GetSingleton()) {
+			++ui->numPausesGame;
+		}
+		CraftShared::open = true;
+		logger::info("Bomb-making menu opened");
 	}
+
+	void ForceClose() { Close(); }
 }

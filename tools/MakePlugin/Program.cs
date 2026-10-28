@@ -3,23 +3,24 @@
 // Bombs are trigger x payload x strength; every combination is its own item:
 //   triggers   0 Impact (explodes on contact), 1 Short Fuse (bounces, 1.5 s), 2 Long Fuse (4 s),
 //              3 Tripwire (placed; goes off when someone comes close)
-//   payloads   0 Frag, 1 Fire, 2 Oil, 3 Smoke, 4 Fear, 5 Frenzy, 6 Concussion
+//   payloads   0 Frag, 1 Fire, 2 Frost, 3 Oil, 4 Smoke, 5 Fear, 6 Frenzy, 7 Concussion
 //   strengths  0 Mild, 1 Moderate, 2 Major (bigger radius, more damage, longer effects)
-//   index = (trigger * 7 + payload) * 3 + strength   (0..83)
+//   slot = (trigger * 16 + payload) * 3 + strength   (room for 8 triggers x 16 payloads, so adding
+//          one never moves an existing ID; FirePots.dll computes the same numbers, src/Bombs.h)
 //
-// Records (fixed IDs: FirePots.dll computes them from the index, so they must never move):
-//   0x900 + index  SCRL  the bomb: a scroll (Scrolls tab; buy, sell, stash, favorite, equip to a
+// Records (fixed IDs):
+//   0x800 + slot   SCRL  the bomb: a scroll (Scrolls tab; buy, sell, stash, favorite, equip to a
 //                        hand). Casting it plays the hand's release animation and fires an
 //                        invisible do-nothing projectile; FirePots.dll then launches the real bomb
-//   0x960 + index  MGEF  that scroll's effect (does nothing) + the bomb's description
-//   0xA00 + index  PROJ  the flying/placed bomb: impact = missile, fuses/tripwire = bouncing
+//   0x980 + slot   MGEF  that scroll's effect (does nothing) + the bomb's description
+//   0xB00 + slot   PROJ  the flying/placed bomb: impact = missile, fuses/tripwire = bouncing
 //                        "lobber" with a timer or a proximity trigger
-//   0xA60 + p*3+s  EXPL  what the payload does, per strength
-//   0xA80 + p*3+s  ENCH  the payload's effect on everyone in the blast (where it has one)
-//   0xAA0..        smoke cloud / oil slick hazards, their spells and effects, fear/frenzy effects,
+//   0xC80 + p*3+s  EXPL  what the payload does, per strength
+//   0xCB0 + p*3+s  ENCH  the payload's effect on everyone in the blast (where it has one)
+//   0xCE0..0xCFF   smoke cloud / oil slick hazards, their spells and effects, fear/frenzy effects,
 //                  the oil-fire explosion (FirePots.dll sets it off when a fire bomb lands in oil)
-//   0x8F0          the invisible do-nothing projectile
-//   0xB00          the MCM quest (MCM Helper menu)
+//   0xCF5          the invisible do-nothing projectile
+//   0xD00          the MCM quest (MCM Helper menu)
 //
 // No recipes: bombs are made anywhere with FirePots.dll's menu (craft key, H).
 // Meshes: models are left empty; FirePots.dll copies them from vanilla forms at load.
@@ -53,16 +54,21 @@ var FireLgShort = Sk(0x03E076);
 var FireLgLong = Sk(0x03E075);
 var EnchFireDamageFFContact = Sk(0x04605A);
 var StaggerAttackFFContact = Sk(0x07809B);
+var EnchFrostDamageFFContact = Sk(0x04605B);
+var FrostSlowFFContact = Sk(0x0B72A0);
+var FrostImpact = Sk(0x018A2E);              // MAGFrost01ImpactSet
 var FlashImod = Sk(0x07E8FD);                // alduinExplosionFlashImod
 var PushImod = Sk(0x09E586);                 // MAGShoutPush01Imod
 var playerRef = FormKey.Factory("000014:Skyrim.esm");
 
 string[] TriggerNames = { "Impact", "Short Fuse", "Long Fuse", "Tripwire" };
 string[] TriggerTags = { "Impact", "ShortFuse", "LongFuse", "Tripwire" };
-string[] PayloadNames = { "Frag", "Fire", "Oil", "Smoke", "Fear", "Frenzy", "Concussion" };
+string[] PayloadNames = { "Frag", "Fire", "Frost", "Oil", "Smoke", "Fear", "Frenzy", "Concussion" };
+const int Payloads = 8;
+uint Slot(int t, int p, int s) => (uint)((t * 16 + p) * 3 + s);
 string[] StrengthNames = { "Mild", "Moderate", "Major" };
 float[] Radius = { 140f, 210f, 280f };
-uint[] BaseValue = { 12, 15, 12, 12, 18, 22, 18 };  // per payload, mild impact; x strength
+uint[] BaseValue = { 12, 15, 15, 12, 12, 18, 22, 18 };  // per payload, mild impact; x strength
 
 var outDir = args.Length > 0 ? args[0] : ".";
 Directory.CreateDirectory(outDir);
@@ -150,7 +156,7 @@ ObjectEffect Ench(uint id, string edid, string name, params Effect[] effects)
 }
 
 // --- Shared ---------------------------------------------------------------------------------
-var nullProjectile = new Projectile(Own(0x8F0), SkyrimRelease.SkyrimSE)
+var nullProjectile = new Projectile(Own(0xCF5), SkyrimRelease.SkyrimSE)
 {
     EditorID = "FP_NullProjectile",
     Type = Projectile.TypeEnum.Missile,
@@ -168,29 +174,29 @@ mod.Projectiles.Add(nullProjectile);
 const MagicEffect.Flag Quiet = MagicEffect.Flag.Painless | MagicEffect.Flag.NoHitEvent | MagicEffect.Flag.NoArea;
 
 // Smoke: invisibility (ends when you attack), stamina loss and no stamina regen while inside.
-var smokeInvis = Mgef(0xAA8, "FP_SmokeInvisibility", "Hidden in Smoke", "Hidden in the smoke.",
+var smokeInvis = Mgef(0xCE6, "FP_SmokeInvisibility", "Hidden in Smoke", "Hidden in the smoke.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Invisibility), Quiet | MagicEffect.Flag.NoMagnitude | MagicEffect.Flag.Recover);
-var smokeChoke = Mgef(0xAA9, "FP_SmokeChoke", "Choking Smoke", "Losing stamina in the smoke.",
+var smokeChoke = Mgef(0xCE7, "FP_SmokeChoke", "Choking Smoke", "Losing stamina in the smoke.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.Stamina },
     Quiet | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoDuration);
-var smokeNoRegen = Mgef(0xAAA, "FP_SmokeNoRegen", "Winded", "No stamina regeneration in the smoke.",
+var smokeNoRegen = Mgef(0xCE8, "FP_SmokeNoRegen", "Winded", "No stamina regeneration in the smoke.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.StaminaRate },
     Quiet | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
 // Oil: slows anyone in the slick.
-var oilSlow = Mgef(0xAB8, "FP_OilSlow", "Oil Slick", "Slowed by the oil.",
+var oilSlow = Mgef(0xCEF, "FP_OilSlow", "Oil Slick", "Slowed by the oil.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.SpeedMult },
     Quiet | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
 // Fear / Frenzy: magnitude = highest level affected.
-var fear = Mgef(0xAC0, "FP_BombFear", "Terrified", "Flees in terror.",
+var fear = Mgef(0xCF0, "FP_BombFear", "Terrified", "Flees in terror.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Demoralize), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea);
 fear.MagicSkill = ActorValue.Illusion;
-var frenzy = Mgef(0xAC1, "FP_BombFrenzy", "Frenzied", "Attacks anyone nearby.",
+var frenzy = Mgef(0xCF1, "FP_BombFrenzy", "Frenzied", "Attacks anyone nearby.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Frenzy), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea);
 frenzy.MagicSkill = ActorValue.Illusion;
 
 // Oil fire: what FirePots.dll sets off when a fire bomb lands in an oil slick.
-var oilFireEnch = Ench(0xAC5, "FP_OilFireEnch", "Burning Oil", Eff(EnchFireDamageFFContact, 25f, 0));
-var oilFire = new Explosion(Own(0xAC4), SkyrimRelease.SkyrimSE)
+var oilFireEnch = Ench(0xCF3, "FP_OilFireEnch", "Burning Oil", Eff(EnchFireDamageFFContact, 25f, 0));
+var oilFire = new Explosion(Own(0xCF2), SkyrimRelease.SkyrimSE)
 {
     EditorID = "FP_OilFireExplosion",
     Name = "Burning Oil",
@@ -207,7 +213,7 @@ oilFire.Sound1.SetTo(TRPOilIgniteLowSD);
 oilFire.ImpactDataSet.SetTo(ScorchImpact);
 oilFire.PlacedObject.SetTo(FireLgLong);
 mod.Explosions.Add(oilFire);
-var oilFireProjectile = new Projectile(Own(0xAC6), SkyrimRelease.SkyrimSE)
+var oilFireProjectile = new Projectile(Own(0xCF4), SkyrimRelease.SkyrimSE)
 {
     EditorID = "FP_OilFireProjectile",
     Type = Projectile.TypeEnum.Missile,
@@ -224,14 +230,14 @@ oilFireProjectile.CollisionLayer.SetTo(L_PROJECTILE);
 mod.Projectiles.Add(oilFireProjectile);
 
 // --- Payload explosions (per strength) ---------------------------------------------------------
-var explosions = new Explosion[7, 3];
-for (var p = 0; p < 7; p++)
+var explosions = new Explosion[Payloads, 3];
+for (var p = 0; p < Payloads; p++)
 {
     for (var s = 0; s < 3; s++)
     {
         var mult = s + 1;
         var tag = $"{StrengthNames[s]}{PayloadNames[p]}";
-        var e = new Explosion(Own((uint)(0xA60 + p * 3 + s)), SkyrimRelease.SkyrimSE)
+        var e = new Explosion(Own((uint)(0xC80 + p * 3 + s)), SkyrimRelease.SkyrimSE)
         {
             EditorID = $"FP_{tag}Explosion",
             Name = $"{StrengthNames[s]} {PayloadNames[p]} Bomb",
@@ -255,41 +261,48 @@ for (var p = 0; p < 7; p++)
                 e.ImpactDataSet.SetTo(ScorchImpact);
                 break;
             case 1:  // Fire: fire burst + burning ground
-                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Fire Burst", Eff(EnchFireDamageFFContact, 20f * mult, 0)).FormKey;
+                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Fire Burst", Eff(EnchFireDamageFFContact, 20f * mult, 0)).FormKey;
                 e.Force = 20f;
                 e.Sound2.SetTo(TRPOilIgniteLowSD);
                 e.ImpactDataSet.SetTo(ScorchImpact);
                 e.PlacedObject.SetTo(s == 0 ? FireSmLong : s == 1 ? FireLgShort : FireLgLong);
                 break;
-            case 2:  // Oil: a slick that slows (and burns when a fire bomb lands in it)
+            case 2:  // Frost: frost burst (drains stamina) + slowed
+                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Frost Burst",
+                    Eff(EnchFrostDamageFFContact, 20f * mult, 0), Eff(FrostSlowFFContact, 30f + 10f * s, 3 + 2 * s)).FormKey;
+                e.Force = 20f;
+                e.Sound2.SetTo(FXExplosionIceSD);
+                e.ImpactDataSet.SetTo(FrostImpact);
+                break;
+            case 3:  // Oil: a slick that slows (and burns when a fire bomb lands in it)
             {
-                var spell = ContactSpell((uint)(0xAB4 + s), $"FP_{tag}SlickSpell", "Oil Slick", Eff(oilSlow.FormKey, 20f + 15f * s, 2));
-                var slick = MakeHazard((uint)(0xAB0 + s), $"FP_{tag}Slick", "Oil Slick", 120f + 60f * s, 60f, spell.FormKey);
+                var spell = ContactSpell((uint)(0xCEC + s), $"FP_{tag}SlickSpell", "Oil Slick", Eff(oilSlow.FormKey, 20f + 15f * s, 2));
+                var slick = MakeHazard((uint)(0xCE9 + s), $"FP_{tag}Slick", "Oil Slick", 120f + 60f * s, 60f, spell.FormKey);
                 e.ImpactDataSet.SetTo(ScorchImpact);  // dark stain
                 e.PlacedObject.SetTo(slick.FormKey);
                 break;
             }
-            case 3:  // Smoke: cloud; inside: invisible, losing stamina, no stamina regen
+            case 4:  // Smoke: cloud; inside: invisible, losing stamina, no stamina regen
             {
-                var spell = ContactSpell((uint)(0xAA4 + s), $"FP_{tag}CloudSpell", "Smoke",
+                var spell = ContactSpell((uint)(0xCE3 + s), $"FP_{tag}CloudSpell", "Smoke",
                     Eff(smokeInvis.FormKey, 0f, 2), Eff(smokeChoke.FormKey, 4f + 4f * s, 0), Eff(smokeNoRegen.FormKey, 100f, 2));
-                var cloud = MakeHazard((uint)(0xAA0 + s), $"FP_{tag}Cloud", "Smoke", 200f + 100f * s, 15f + 7.5f * s, spell.FormKey);
+                var cloud = MakeHazard((uint)(0xCE0 + s), $"FP_{tag}Cloud", "Smoke", 200f + 100f * s, 15f + 7.5f * s, spell.FormKey);
                 e.PlacedObject.SetTo(cloud.FormKey);
                 break;
             }
-            case 4:  // Fear: flash + everyone up to the level flees
-                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Terror", Eff(fear.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
+            case 5:  // Fear: flash + everyone up to the level flees
+                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Terror", Eff(fear.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
                 e.ImageSpaceModifier.SetTo(FlashImod);
                 e.ISRadius = 300f + 200f * s;
                 e.Sound2.SetTo(ThunderA);
                 e.ImpactDataSet.SetTo(ShockImpact);
                 break;
-            case 5:  // Frenzy: everyone up to the level attacks whoever is nearest
-                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Frenzy", Eff(frenzy.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
+            case 6:  // Frenzy: everyone up to the level attacks whoever is nearest
+                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Frenzy", Eff(frenzy.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
                 e.Sound2.SetTo(FXExplosionIceSD);
                 break;
-            case 6:  // Concussion: wide stagger, very loud
-                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Concussion", Eff(StaggerAttackFFContact, 0.5f + 0.25f * s, 0)).FormKey;
+            case 7:  // Concussion: wide stagger, very loud
+                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Concussion", Eff(StaggerAttackFFContact, 0.5f + 0.25f * s, 0)).FormKey;
                 e.Radius = Radius[s] * 1.75f;
                 e.Force = 60f * mult;
                 e.SoundLevel = SoundLevel.VeryLoud;
@@ -311,10 +324,11 @@ string Describe(int t, int p, int s)
     {
         0 => "a burst of shrapnel",
         1 => "a burst of flame that leaves the ground burning",
-        2 => "a slick of oil that slows anyone in it and burns when a fire bomb lands in it",
-        3 => "a lingering cloud that hides anyone inside until they strike, but chokes their stamina",
-        4 => $"a blinding flash that sends anyone up to level {10 * (s + 1)} fleeing",
-        5 => $"a cloud that drives anyone up to level {10 * (s + 1)} into a frenzy",
+        2 => "a burst of cold that slows and saps stamina",
+        3 => "a slick of oil that slows anyone in it and burns when a fire bomb lands in it",
+        4 => "a lingering cloud that hides anyone inside until they strike, but chokes their stamina",
+        5 => $"a blinding flash that sends anyone up to level {10 * (s + 1)} fleeing",
+        6 => $"a cloud that drives anyone up to level {10 * (s + 1)} into a frenzy",
         _ => "a deafening blast that staggers everyone around it",
     };
     var how = t switch
@@ -329,16 +343,16 @@ string Describe(int t, int p, int s)
 
 for (var t = 0; t < 4; t++)
 {
-    for (var p = 0; p < 7; p++)
+    for (var p = 0; p < Payloads; p++)
     {
         for (var s = 0; s < 3; s++)
         {
-            var i = (uint)((t * 7 + p) * 3 + s);
+            var i = Slot(t, p, s);
             var name = $"{StrengthNames[s]} {PayloadNames[p]} Bomb ({TriggerNames[t]})";
             var tag = $"{StrengthNames[s]}{PayloadNames[p]}{TriggerTags[t]}";
             var desc = Describe(t, p, s);
 
-            var projectile = new Projectile(Own(0xA00 + i), SkyrimRelease.SkyrimSE)
+            var projectile = new Projectile(Own(0xB00 + i), SkyrimRelease.SkyrimSE)
             {
                 EditorID = $"FP_{tag}Projectile",
                 Name = name,
@@ -367,7 +381,7 @@ for (var t = 0; t < 4; t++)
             projectile.CollisionLayer.SetTo(L_PROJECTILE);
             mod.Projectiles.Add(projectile);
 
-            var itemEffect = new MagicEffect(Own(0x960 + i), SkyrimRelease.SkyrimSE)
+            var itemEffect = new MagicEffect(Own(0x980 + i), SkyrimRelease.SkyrimSE)
             {
                 EditorID = $"FP_{tag}Effect",
                 Name = name,
@@ -382,7 +396,7 @@ for (var t = 0; t < 4; t++)
             itemEffect.Projectile.SetTo(nullProjectile.FormKey);
             mod.MagicEffects.Add(itemEffect);
 
-            var bomb = new Scroll(Own(0x900 + i), SkyrimRelease.SkyrimSE)
+            var bomb = new Scroll(Own(0x800 + i), SkyrimRelease.SkyrimSE)
             {
                 EditorID = $"FP_{tag}",
                 Name = name,
@@ -409,7 +423,7 @@ for (var t = 0; t < 4; t++)
 }
 
 // --- MCM quest (same setup as DaggerfallCombat: MCM Helper reads the menu from config.json) ----
-var quest = new Quest(Own(0xB00), SkyrimRelease.SkyrimSE)
+var quest = new Quest(Own(0xD00), SkyrimRelease.SkyrimSE)
 {
     EditorID = "FirePots_MCM",
     Name = "Fire Pots MCM",
@@ -452,38 +466,39 @@ Require(check.IsSmallMaster, "plugin is ESL-flagged");
 var masters = check.ModHeader.MasterReferences.Select(m => m.Master).ToList();
 Require(masters.SequenceEqual(new[] { skyrim }), $"only master is Skyrim.esm (got {string.Join(", ", masters)})");
 Require(!check.ConstructibleObjects.Any() && !check.MiscItems.Any(), "no recipes or misc items");
-Require(check.Scrolls.Count() == 84, $"84 bombs (got {check.Scrolls.Count()})");
+Require(check.Scrolls.Count() == 4 * Payloads * 3, $"{4 * Payloads * 3} bombs (got {check.Scrolls.Count()})");
 var maxId = check.EnumerateMajorRecords().Max(r => r.FormKey.ID);
 Require(maxId <= 0xFFF, $"all IDs fit an ESL (max {maxId:X})");
 
 for (var t = 0; t < 4; t++)
 {
-    for (var p = 0; p < 7; p++)
+    for (var p = 0; p < Payloads; p++)
     {
         for (var s = 0; s < 3; s++)
         {
-            var i = (uint)((t * 7 + p) * 3 + s);
-            var bomb = check.Scrolls.Single(x => x.FormKey.ID == 0x900 + i);
+            var i = Slot(t, p, s);
+            var bomb = check.Scrolls.Single(x => x.FormKey.ID == 0x800 + i);
             Require(bomb.Name?.String == $"{StrengthNames[s]} {PayloadNames[p]} Bomb ({TriggerNames[t]})", $"bomb {i:X} name");
             Require((int)bomb.Type == 13 && bomb.EquipmentType.FormKey == EitherHand, $"bomb {i:X} is an either-hand scroll");
-            Require(bomb.Effects.Count == 1 && bomb.Effects[0].BaseEffect.FormKey.ID == 0x960 + i, $"bomb {i:X} effect");
-            var proj = check.Projectiles.Single(x => x.FormKey.ID == 0xA00 + i);
-            Require(proj.Explosion.FormKey.ID == 0xA60 + p * 3 + s, $"bomb {i:X} projectile -> explosion");
+            Require(bomb.Effects.Count == 1 && bomb.Effects[0].BaseEffect.FormKey.ID == 0x980 + i, $"bomb {i:X} effect");
+            var proj = check.Projectiles.Single(x => x.FormKey.ID == 0xB00 + i);
+            Require(proj.Explosion.FormKey.ID == 0xC80 + p * 3 + s, $"bomb {i:X} projectile -> explosion");
             Require(t == 0 ? proj.Type == Projectile.TypeEnum.Missile && !proj.Flags.HasFlag(Projectile.Flag.AltTrigger)
                            : proj.Type == Projectile.TypeEnum.Lobber && proj.Flags.HasFlag(Projectile.Flag.AltTrigger), $"bomb {i:X} trigger");
             if (t == 3) Require(proj.ExplosionAltTriggerProximity > 50f, $"bomb {i:X} tripwire proximity");
         }
     }
 }
-for (var p = 0; p < 7; p++)
+for (var p = 0; p < Payloads; p++)
 {
     for (var s = 0; s < 3; s++)
     {
-        var e = check.Explosions.Single(x => x.FormKey.ID == 0xA60 + p * 3 + s);
+        var e = check.Explosions.Single(x => x.FormKey.ID == 0xC80 + p * 3 + s);
         Require(e.Radius >= Radius[s], $"{PayloadNames[p]} {StrengthNames[s]} radius");
-        Require(p != 6 || e.SoundLevel == SoundLevel.VeryLoud, "concussion is very loud");
-        Require(p != 3 || check.Hazards.Any(h => h.FormKey == e.PlacedObject.FormKey && h.Lifetime >= 15f), "smoke lingers");
-        Require(p != 2 || check.Hazards.Any(h => h.FormKey == e.PlacedObject.FormKey), "oil leaves a slick");
+        Require(p != 7 || e.SoundLevel == SoundLevel.VeryLoud, "concussion is very loud");
+        Require(p != 2 || !e.ObjectEffect.IsNull, "frost has a burst");
+        Require(p != 4 || check.Hazards.Any(h => h.FormKey == e.PlacedObject.FormKey && h.Lifetime >= 15f), "smoke lingers");
+        Require(p != 3 || check.Hazards.Any(h => h.FormKey == e.PlacedObject.FormKey), "oil leaves a slick");
     }
 }
 var q = check.Quests.Single();
