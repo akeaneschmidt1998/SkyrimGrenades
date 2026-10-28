@@ -3,6 +3,7 @@
 #include "ArcState.h"
 #include "Ballistics.h"
 #include "Config.h"
+#include "Crafting.h"
 #include "Forms.h"
 
 #include <xmmintrin.h>
@@ -52,6 +53,7 @@ namespace
 		std::atomic<bool> cancel{ false };    // block pressed since the last tick
 		std::atomic<bool> reload{ false };
 		std::atomic<bool> cycle{ false };     // cycle key pressed since the last tick
+		std::atomic<bool> craft{ false };     // craft key pressed since the last tick
 	};
 	InputFlags g_input;
 
@@ -81,6 +83,10 @@ namespace
 					} else if (button->IsUp()) {
 						g_input.keyDown = false;
 					}
+					continue;
+				}
+				if (button->IsDown() && MatchesKey(button, Config::craftKey)) {
+					g_input.craft = true;
 					continue;
 				}
 				if (button->IsDown() && MatchesKey(button, Config::cycleKey)) {
@@ -472,6 +478,16 @@ namespace
 		const bool pressed = g_input.pressed.exchange(false);
 		const bool cancel = g_input.cancel.exchange(false);
 
+		if (g_input.craft.exchange(false) && g_throw.phase == Phase::kIdle) {
+			auto* ui = RE::UI::GetSingleton();
+			auto* controls = RE::ControlMap::GetSingleton();
+			const bool free = ui && controls && !ui->GameIsPaused() && !ui->IsMenuOpen(RE::Console::MENU_NAME) &&
+			                  controls->IsMovementControlsEnabled();  // not in dialogue, cutscenes, other menus
+			if (free) {
+				Crafting::Open(a_player);
+			}
+		}
+
 		if (g_input.cycle.exchange(false) && Forms::Ready()) {
 			if (SelectCarriedType(a_player, true)) {
 				g_throw.pots = CountPots(a_player, CurrentType());
@@ -597,5 +613,6 @@ namespace Thrower
 		g_input.pressed = false;
 		g_input.cancel = false;
 		g_input.cycle = false;
+		g_input.craft = false;
 	}
 }

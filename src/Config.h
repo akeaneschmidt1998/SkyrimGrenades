@@ -5,12 +5,15 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 namespace Config
 {
 	// --- Throw ---
 	inline std::uint32_t throwKey = 34;       // G: hold to wind up, release to throw
 	inline std::uint32_t cycleKey = 47;       // V: switch pot type (fire / frost)
+	inline std::uint32_t craftKey = 35;       // H: open the pot-making menu
+	inline bool          craftInCombat = true;  // allow making pots while in combat
 	inline std::uint32_t reloadConfigKey = 0;  // re-read the INI in game
 	inline float         minSpeed = 700.0f;    // units/s at the shortest throw
 	inline float         maxSpeed = 1700.0f;   // units/s at full wind-up
@@ -43,6 +46,18 @@ namespace Config
 	inline std::string fireExplosionModel = "Skyrim.esm|070E5C";   // TrapOilLampExplosion01: fire burst + light
 	inline std::string frostPotModel = "Skyrim.esm|0B9BDE";        // GlazedJugSmall01
 	inline std::string frostExplosionModel = "Skyrim.esm|044089";  // ExplosionRuneFrost01: frost burst + light
+
+	// --- Crafting: what counts as a container / filling ("Plugin.esm|HEXID", fillings ", count") ---
+	// Repeatable INI keys (sContainer, sFireFilling, sFrostFilling) add entries; if the INI lists
+	// none of a kind, the built-in vanilla lists are used.
+	struct Filling
+	{
+		std::string form;
+		int         count = 1;  // how many make one pot
+		int         type = 0;   // 0 = Fire Pot, 1 = Frost Pot
+	};
+	inline std::vector<std::string> containers;
+	inline std::vector<Filling>     fillings;
 
 	// --- Messages ---
 	inline bool printToConsole = true;

@@ -36,6 +36,17 @@ namespace
 		using namespace Config;
 		// clang-format off
 		if      (key == "ithrowkey")          throwKey = static_cast<std::uint32_t>(std::stoul(val));
+		else if (key == "icraftkey")          craftKey = static_cast<std::uint32_t>(std::stoul(val));
+		else if (key == "bcraftincombat")     craftInCombat = ParseBool(val);
+		else if (key == "scontainer")         containers.push_back(Unquote(val));
+		else if (key == "sfirefilling" || key == "sfrostfilling") {
+			Filling f;
+			const auto comma = val.find(',');
+			f.form = Trim(Unquote(val.substr(0, comma)));
+			f.count = comma == std::string::npos ? 1 : std::clamp(std::stoi(val.substr(comma + 1)), 1, 99);
+			f.type = key == "sfrostfilling" ? 1 : 0;
+			fillings.push_back(std::move(f));
+		}
 		else if (key == "icyclekey")          cycleKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "ireloadconfigkey")   reloadConfigKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "fminspeed")          minSpeed = (std::max)(50.0f, std::stof(val));
@@ -102,9 +113,43 @@ namespace Config
 {
 	void Load()
 	{
+		containers.clear();
+		fillings.clear();
 		if (!ReadIni(kMainIni)) {
 			logger::warn("{} not found, using defaults", kMainIni.string());
 		}
+		if (containers.empty()) {
+			containers = {
+				"Skyrim.esm|0F2012", "Skyrim.esm|0F2013", "Skyrim.esm|0F2014", "Skyrim.esm|0F2015",  // empty wine bottles
+				"Skyrim.esm|0FED17",                                                                // empty spiced wine bottle
+				"Dawnguard.esm|0093F5", "Dawnguard.esm|0093F6",                                    // empty wine bottles
+				"Skyrim.esm|0B9BDE", "Skyrim.esm|0B9BD6", "Skyrim.esm|0F08F3", "Skyrim.esm|0F08F1",  // jugs
+				"Skyrim.esm|08632C",                                                                // glazed jug
+				"Skyrim.esm|0B9BD2", "Skyrim.esm|0B9BD4", "Skyrim.esm|0F08F6", "Skyrim.esm|0F08F7",  // pots
+				"Skyrim.esm|08632A",                                                                // glazed urn
+			};
+		}
+		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 0; })) {
+			for (auto& [form, count] : std::initializer_list<std::pair<const char*, int>>{
+					 { "Skyrim.esm|03AD5E", 1 },      // Fire Salts
+					 { "Skyrim.esm|0F11C0", 1 },      // Dwarven Oil
+					 { "Skyrim.esm|03AD72", 1 },      // Troll Fat
+					 { "Skyrim.esm|052695", 2 },      // Charred Skeever Hide
+					 { "Skyrim.esm|063B5F", 2 },      // Spriggan Sap
+					 { "Dragonborn.esm|01CD74", 2 },  // Ash Creep Cluster
+					 { "Dragonborn.esm|01CD71", 2 },  // Ash Hopper Jelly
+					 { "Dragonborn.esm|01CD6E", 2 },  // Burnt Spriggan Wood
+					 { "Dragonborn.esm|016E26", 2 },  // Spawn Ash
+				 }) {
+				fillings.push_back({ form, count, 0 });
+			}
+		}
+		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 1; })) {
+			fillings.push_back({ "Skyrim.esm|03AD5F", 1, 1 });  // Frost Salts
+			fillings.push_back({ "Skyrim.esm|03AD6A", 1, 1 });  // Ice Wraith Teeth
+		}
+		logger::info("Crafting: key {}, {} containers, {} fillings, in combat: {}", craftKey, containers.size(), fillings.size(), craftInCombat);
+
 		if (maxSpeed < minSpeed) {
 			std::swap(minSpeed, maxSpeed);
 		}

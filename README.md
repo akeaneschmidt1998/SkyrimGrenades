@@ -9,6 +9,7 @@ see exactly where it will land, and set the ground on fire.
   someone directly), and a meter under the crosshair shows the wind-up and how many pots you have.
 - **Release G** to throw. Your weapon stays drawn; the pot leaves from your left hand.
 - **Tap G** or **press block** to cancel without using a pot.
+- **Press H** to make pots (see below).
 - **Press V** to switch between Fire Pots and Frost Pots. If you run out of one, the next throw
   switches to the other by itself.
 
@@ -25,9 +26,17 @@ thing it touches.
 - **Frost Pot:** the same shatter with a frost burst (30 frost damage, which also drains stamina
   like frost spells) and a frost decal. No lingering patch.
 
-## Crafting
+## Making pots
 
-At any cooking pot: **one empty container + a filling** makes one pot.
+**Press H anywhere** (outside menus and dialogue) to make pots. Three short menus:
+
+1. **Choose a container**: the empty bottles, jugs, pots and urns you carry, with counts.
+2. **Choose a filling**: the fillings you have enough of, each saying which pot it makes,
+   e.g. `Fire Salts (4) - Fire Pot` or `Charred Skeever Hide x2 (5) - Fire Pot`.
+3. **How many**: 1, 5 or All (skipped when you can only make one).
+
+Each menu has Back and Cancel, and long lists page after 8 entries. There are no recipes at the
+cooking pot.
 
 | Containers (any one) | Fire Pot fillings | Frost Pot fillings |
 |---|---|---|
@@ -35,9 +44,8 @@ At any cooking pot: **one empty container + a filling** makes one pot.
 | Clay and Nordic jugs, small and large; glazed jug | Charred Skeever Hide, Spriggan Sap (2 each) | |
 | Glazed and Nordic pots; glazed urn | Ash Creep Cluster, Ash Hopper Jelly, Burnt Spriggan Wood, Spawn Ash (2 each, Dragonborn) | |
 
-The menu shows **one row per filling you carry**, so you choose what to spend; the container is
-picked for you (the first one you carry, cheapest clutter first). Rows only appear once you carry
-both an empty container and that filling.
+Both lists live in `FirePots.ini` (`[Containers]`, `[Fillings]`), so adding a modded bottle or a
+new filling is one line.
 
 For testing: `help "fire pot" 4` (or `"frost pot"`) in the console gives the ID, then
 `player.additem <id> 10`.
@@ -47,7 +55,7 @@ For testing: `help "fire pot" 4` (or `"frost pot"`) in the console gives the ID,
 | Piece | Where | How |
 |---|---|---|
 | Pot items | `FirePots.esp` (`FP_FirePot`, `FP_FrostPot`) | Misc items, 1 lb |
-| Recipes | `FP_Recipe<Type>_<Filling>_<NN>` | One per container × filling (187); conditions show one row per filling |
+| Pot-making menu | `src/Crafting.cpp` | Craft key → native message boxes: container → filling → amount; lists from the INI |
 | Flight | `FP_FirePotProjectile` | Missile with gravity that explodes on contact; launched by the DLL from the throwing hand with the wind-up speed |
 | Shatter + fire | `FP_FirePotExplosion` | Sounds, scorch decal, fire-damage burst (`FP_FirePotBurstEnch`), places vanilla `FireSmLongHazard` |
 | Shatter + frost | `FP_FrostPotExplosion` | Sounds, frost decal, frost-damage burst (`FP_FrostPotBurstEnch`) |
@@ -71,8 +79,7 @@ install it directly in MO2 / Vortex. **FirePots-pdb** has debug symbols for cras
 
 - **SKSE** and **Address Library for SKSE Plugins** for your game version (Steam 1.7.104: SKSE
   2.3.1+, Address Library *All in One* v13+).
-- `FirePots.esp` is ESL-flagged (takes no load order slot). Masters: Skyrim.esm, Dawnguard.esm,
-  Dragonborn.esm (every SE/AE copy has them).
+- `FirePots.esp` is ESL-flagged (takes no load order slot); its only master is Skyrim.esm.
 - Skyrim VR is not supported.
 
 ## Build (Windows)
@@ -107,8 +114,9 @@ Each step adds one thing. Log: `Documents/My Games/Skyrim Special Edition/SKSE/F
 
 **B. Wind-up and arc**
 2. With no pots, press G: "You have no Fire Pots or Frost Pots."
-   At a cooking pot with an empty wine bottle and Fire Salts + Troll Fat: two Fire Pot rows. Drop
-   the bottle: both rows disappear.
+   With an empty wine bottle, 3 Fire Salts and 4 Charred Skeever Hide, press H: the bottle is
+   listed; pick it, then both fillings are listed; pick the salts, choose 1: one Fire Pot, one
+   bottle and one salt gone. With no container: "You need an empty bottle, jug or pot...".
 3. Add 10 pots. Hold G: the meter fills over about a second and an arc leaves your left hand.
    Look around while holding: the arc and ring follow. Aim at a wall: the ring stands up on it.
    Aim at an NPC: the ring turns red when the arc ends on them.

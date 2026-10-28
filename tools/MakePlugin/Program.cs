@@ -7,11 +7,8 @@
 //                                 burning patch left on the ground)
 //   FP_<Type>PotBurstEnch   ENCH  the burst's elemental damage (vanilla enchantment effect)
 //
-// Recipes (cooking pot): ANY empty bottle, jug, pot or urn + ANY filling of the right kind.
-// Every container x filling pair is its own recipe, but each recipe only appears when you carry
-// that filling and its container is the FIRST one in the container list you carry. So the menu
-// shows one row per filling you have (pick which filling to spend), never a wall of duplicates,
-// and whichever empty container you have gets used.
+// No recipes: pots are made anywhere with FirePots.dll's pot-making menu (craft key, H), which
+// reads its container and filling lists from FirePots.ini.
 //
 // Meshes: the plugin leaves item, projectile and explosion models empty; FirePots.dll copies them
 // from vanilla forms at load (see [Visuals] in FirePots.ini).
@@ -28,54 +25,9 @@ var skyrim = ModKey.FromFileName("Skyrim.esm");
 var dawnguard = ModKey.FromFileName("Dawnguard.esm");
 var dragonborn = ModKey.FromFileName("Dragonborn.esm");
 FormKey Sk(uint id) => new FormKey(skyrim, id);
-FormKey Dg(uint id) => new FormKey(dawnguard, id);
-FormKey Db(uint id) => new FormKey(dragonborn, id);
 
 // Vanilla forms, IDs from Mutagen.Bethesda.FormKeys.SkyrimSE.
 var L_PROJECTILE = Sk(0x088767);
-var CraftingCookpot = Sk(0x0A5CB3);
-
-// --- Containers: anything that could hold a filling and shatter. Order = which one gets used
-// first when you carry several (cheap clutter first).
-var containers = new (string Name, FormKey Key)[]
-{
-    ("Empty Wine Bottle (01A)", Sk(0x0F2012)),
-    ("Empty Wine Bottle (01B)", Sk(0x0F2013)),
-    ("Empty Wine Bottle (02A)", Sk(0x0F2014)),
-    ("Empty Wine Bottle (02B)", Sk(0x0F2015)),
-    ("Empty Spiced Wine Bottle", Sk(0x0FED17)),
-    ("Empty Wine Bottle (DG 03)", Dg(0x0093F5)),
-    ("Empty Wine Bottle (DG 04)", Dg(0x0093F6)),
-    ("Clay Jug (small)", Sk(0x0B9BDE)),
-    ("Clay Jug (large)", Sk(0x0B9BD6)),
-    ("Nordic Jug (small)", Sk(0x0F08F3)),
-    ("Nordic Jug (large)", Sk(0x0F08F1)),
-    ("Glazed Jug", Sk(0x08632C)),
-    ("Glazed Pot", Sk(0x0B9BD2)),
-    ("Glazed Pot (2)", Sk(0x0B9BD4)),
-    ("Nordic Pot", Sk(0x0F08F6)),
-    ("Nordic Pot (2)", Sk(0x0F08F7)),
-    ("Glazed Urn", Sk(0x08632A)),
-};
-
-// --- Fillings: (ingredient, how many it takes for one pot)
-var fireFillings = new (string Name, FormKey Key, int Count)[]
-{
-    ("Fire Salts", Sk(0x03AD5E), 1),
-    ("Dwarven Oil", Sk(0x0F11C0), 1),
-    ("Troll Fat", Sk(0x03AD72), 1),
-    ("Charred Skeever Hide", Sk(0x052695), 2),
-    ("Spriggan Sap", Sk(0x063B5F), 2),
-    ("Ash Creep Cluster", Db(0x01CD74), 2),
-    ("Ash Hopper Jelly", Db(0x01CD71), 2),
-    ("Burnt Spriggan Wood", Db(0x01CD6E), 2),
-    ("Spawn Ash", Db(0x016E26), 2),
-};
-var frostFillings = new (string Name, FormKey Key, int Count)[]
-{
-    ("Frost Salts", Sk(0x03AD5F), 1),
-    ("Ice Wraith Teeth", Sk(0x03AD6A), 1),
-};
 
 // --- Pot types. Fixed form IDs: FirePots.dll looks these up, so they must never move.
 var types = new[]
@@ -85,15 +37,13 @@ var types = new[]
         DamageKeyword: Sk(0x01CEAD),     // MagicDamageFire
         Sound2: Sk(0x042526),            // TRPOilIgniteLowSD
         ImpactSet: Sk(0x01C2AF),         // MAGFirebolt01ImpactSet (scorch)
-        Placed: Sk(0x03E074),            // FireSmLongHazard (burning patch)
-        Fillings: fireFillings, FirstRecipeId: 0x900),
+        Placed: Sk(0x03E074)),           // FireSmLongHazard (burning patch)
     new PotType("Frost", "Frost Pot", 0x810, 20, BurstDamage: 30f,
         DamageEffect: Sk(0x04605B),      // EnchFrostDamageFFContact (also drains stamina)
         DamageKeyword: Sk(0x01CEAE),     // MagicDamageFrost
         Sound2: Sk(0x023992),            // FXExplosionIceSD
         ImpactSet: Sk(0x018A2E),         // MAGFrost01ImpactSet (frost decal)
-        Placed: null,
-        Fillings: frostFillings, FirstRecipeId: 0xA00),
+        Placed: null),
 };
 var TRPOilLampBreak = Sk(0x08BBC6);  // shatter sound, both types
 const float BlastRadius = 160f;      // units (~2.3 m); the arc preview draws this ring
@@ -107,20 +57,6 @@ var mod = new SkyrimMod(modKey, SkyrimRelease.SkyrimSE);
 mod.ModHeader.Author = "akeaneschmidt1998";
 mod.ModHeader.Description = "Fire Pots: throwable fire and frost pots with wind-up and arc preview (requires FirePots.dll / SKSE).";
 mod.IsSmallMaster = true;  // ESL flag: takes no load order slot
-
-ConditionFloat ItemCount(FormKey item, CompareOperator op, float value)
-{
-    var data = new GetItemCountConditionData { RunOnType = Condition.RunOnType.Subject };
-    data.ItemOrList.Link.SetTo(item);
-    return new ConditionFloat { CompareOperator = op, ComparisonValue = value, Data = data };
-}
-
-ContainerEntry Ingredient(FormKey item, int count)
-{
-    var ci = new ContainerItem { Count = count };
-    ci.Item.SetTo(item);
-    return new ContainerEntry { Item = ci };
-}
 
 foreach (var t in types)
 {
@@ -189,37 +125,9 @@ foreach (var t in types)
         Keywords = new() { t.DamageKeyword.ToLink<IKeywordGetter>() },
     };
     mod.MiscItems.Add(pot);
-
-    // Recipes: one per container x filling.
-    var id = t.FirstRecipeId;
-    foreach (var f in t.Fillings)
-    {
-        for (var ci = 0; ci < containers.Length; ci++)
-        {
-            var c = containers[ci];
-            var recipe = new ConstructibleObject(new FormKey(modKey, id++), SkyrimRelease.SkyrimSE)
-            {
-                EditorID = $"FP_Recipe{t.Tag}_{Slug(f.Name)}_{ci:00}",
-                CreatedObjectCount = 1,
-                Items = new(),
-            };
-            recipe.CreatedObject.SetTo(pot.FormKey);
-            recipe.WorkbenchKeyword.SetTo(CraftingCookpot);
-            recipe.Items.Add(Ingredient(c.Key, 1));
-            recipe.Items.Add(Ingredient(f.Key, f.Count));
-            // shown only with the filling in hand, and this container is the first one carried
-            recipe.Conditions.Add(ItemCount(f.Key, CompareOperator.GreaterThanOrEqualTo, 1));
-            recipe.Conditions.Add(ItemCount(c.Key, CompareOperator.GreaterThanOrEqualTo, 1));
-            for (var earlier = 0; earlier < ci; earlier++)
-            {
-                recipe.Conditions.Add(ItemCount(containers[earlier].Key, CompareOperator.EqualTo, 0));
-            }
-            mod.ConstructibleObjects.Add(recipe);
-        }
-    }
 }
 
-// Masters in load order: Skyrim.esm, Dawnguard.esm, Dragonborn.esm (only the referenced ones end up listed).
+// Only Skyrim.esm is referenced now; the load order just keeps masters ordered if that changes.
 mod.BeginWrite
     .ToPath(outPath)
     .WithLoadOrder(skyrim, ModKey.FromFileName("Update.esm"), dawnguard, ModKey.FromFileName("HearthFires.esm"), dragonborn)
@@ -240,7 +148,8 @@ void Require(bool ok, string what)
 
 Require(check.IsSmallMaster, "plugin is ESL-flagged");
 var masters = check.ModHeader.MasterReferences.Select(m => m.Master).ToList();
-Require(masters.SequenceEqual(new[] { skyrim, dawnguard, dragonborn }), $"masters are Skyrim, Dawnguard, Dragonborn in order (got {string.Join(", ", masters)})");
+Require(masters.SequenceEqual(new[] { skyrim }), $"only master is Skyrim.esm (got {string.Join(", ", masters)})");
+Require(!check.ConstructibleObjects.Any(), "no recipes (crafting is the DLL's menu)");
 
 foreach (var t in types)
 {
@@ -259,22 +168,10 @@ foreach (var t in types)
 
     var en = check.ObjectEffects.Single(x => x.FormKey.ID == t.BaseId + 3);
     Require(en.Effects.Count == 1 && en.Effects[0].BaseEffect.FormKey == t.DamageEffect, $"{t.Name} burst effect");
-
-    var recipes = check.ConstructibleObjects.Where(r => r.CreatedObject.FormKey == pot.FormKey).ToList();
-    Require(recipes.Count == t.Fillings.Length * containers.Length, $"{t.Name}: {t.Fillings.Length} fillings x {containers.Length} containers = {recipes.Count} recipes");
-    Require(recipes.All(r => r.WorkbenchKeyword.FormKey == CraftingCookpot), $"{t.Name} recipes are at the cooking pot");
-    Require(recipes.All(r => r.Items?.Count == 2), $"{t.Name} recipes use a container and a filling");
-    Require(recipes.All(r => r.Conditions.Count >= 2 && r.Conditions.All(c => c.Data is IGetItemCountConditionDataGetter)), $"{t.Name} recipes have item-count conditions");
-    // the last container's recipe must rule out every earlier container
-    var last = recipes.Last();
-    Require(last.Conditions.Count == 2 + containers.Length - 1, $"{t.Name} last recipe excludes all earlier containers");
 }
 
 Console.WriteLine($"Wrote and verified {outPath} ({new FileInfo(outPath).Length} bytes): " +
-                  $"{types.Length} pot types, {check.ConstructibleObjects.Count} recipes, masters {string.Join(", ", masters)}");
-
-static string Slug(string s) => new string(s.Where(char.IsLetterOrDigit).ToArray());
+                  $"{types.Length} pot types, masters {string.Join(", ", masters)}");
 
 record PotType(string Tag, string Name, uint BaseId, uint Value, float BurstDamage, FormKey DamageEffect,
-    FormKey DamageKeyword, FormKey Sound2, FormKey ImpactSet, FormKey? Placed,
-    (string Name, FormKey Key, int Count)[] Fillings, uint FirstRecipeId);
+    FormKey DamageKeyword, FormKey Sound2, FormKey ImpactSet, FormKey? Placed);

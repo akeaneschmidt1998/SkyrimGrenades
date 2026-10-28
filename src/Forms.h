@@ -24,6 +24,9 @@ namespace Forms
 	// Fire, Frost. Index order is the cycling order.
 	std::vector<PotType>& Types();
 
+	// "Skyrim.esm|0B9BD2" -> that form, or nullptr (logged).
+	RE::TESForm* Lookup(const std::string& a_ref);
+
 	// False (and logged) if FirePots.esp isn't loaded or a form is missing.
 	bool Load();
 	[[nodiscard]] bool Ready();

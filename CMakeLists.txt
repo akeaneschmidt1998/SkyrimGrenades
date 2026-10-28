@@ -51,6 +51,7 @@ set(SOURCES
 	src/main.cpp
 	src/ArcDraw.cpp
 	src/Config.cpp
+	src/Crafting.cpp
 	src/Forms.cpp
 	src/Overlay.cpp
 	src/OverlayD3D.cpp
@@ -63,6 +64,7 @@ set(HEADERS
 	src/ArcState.h
 	src/Ballistics.h
 	src/Config.h
+	src/Crafting.h
 	src/Forms.h
 	src/Overlay.h
 	src/OverlayD3D.h

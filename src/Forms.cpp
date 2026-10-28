@@ -90,6 +90,8 @@ namespace
 
 namespace Forms
 {
+	RE::TESForm* Lookup(const std::string& a_ref) { return ParseFormRef(a_ref); }
+
 	std::vector<PotType>& Types()
 	{
 		static std::vector<PotType> types{
