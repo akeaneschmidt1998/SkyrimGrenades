@@ -343,6 +343,28 @@ namespace
 		RE::Projectile::Launch(&h, data);
 	}
 
+	// Fire's spread: a ring of burning-ground patches around a fire burst, so it covers the blast.
+	void FireSpread(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_strength)
+	{
+		const int s = std::clamp(a_strength, 0, Bombs::kStrengths - 1);
+		auto*     base = Forms::fireSpreadProjectile[s];
+		if (!base) {
+			return;
+		}
+		const int   n = Bombs::FireSpreadCount(s);
+		const float r = Bombs::BlastRadius(Bombs::kFire, s) * 0.6f;
+		for (int i = 0; i < n; ++i) {
+			const float a = 2.0f * Ballistics::kPi * (static_cast<float>(i) + 0.5f * static_cast<float>(s)) / static_cast<float>(n);
+			const Vec3  at = a_at + Vec3{ std::cos(a) * r, std::sin(a) * r, 60.0f };
+			RE::Projectile::ProjectileRot rot{ 1.5707963f * g_pitchSign, 0.0f };  // straight down onto the ground
+			RE::Projectile::LaunchData    data(base, a_player, ToNi(at), rot);
+			data.autoAim = false;
+			data.useOrigin = true;
+			RE::ProjectileHandle h;
+			RE::Projectile::Launch(&h, data);
+		}
+	}
+
 	void UpdateOil(RE::PlayerCharacter* a_player, float a_dt)
 	{
 		for (auto& s : g_slicks) {
@@ -359,6 +381,9 @@ namespace
 			}
 			// gone: it burst at its last position
 			ChainFrom(it->last, Bombs::BlastRadius(it->payload, it->strength));
+			if (it->payload == Bombs::kFire && !it->debug) {
+				FireSpread(a_player, it->last, it->strength);
+			}
 			if (it->payload == Bombs::kSmoke && !it->debug) {
 				SmokeMist(a_player, it->last, it->strength);
 			}

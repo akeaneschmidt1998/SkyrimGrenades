@@ -47,6 +47,8 @@ namespace Bombs
 	constexpr unsigned SmokeMistHazardId(int s) { return 0xD60u + static_cast<unsigned>(s); }
 	constexpr unsigned SmokeMistProjectileId(int s) { return 0xD66u + static_cast<unsigned>(s); }
 	inline constexpr unsigned kFrostBurstId = 0xD70, kFearBurstId = 0xD71, kFrenzyBurstId = 0xD72;
+	constexpr unsigned FireSpreadProjectileId(int s) { return 0xD77u + static_cast<unsigned>(s); }
+	constexpr int      FireSpreadCount(int s) { return 5 + s; }  // burning patches in the ring around a fire burst
 
 	// Debug smoke bombs: one per candidate smoke effect, to try them out (FirePots.ini [Debug]).
 	inline constexpr int kDebugSmokes = 10;

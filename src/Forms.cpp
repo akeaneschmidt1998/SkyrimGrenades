@@ -221,6 +221,7 @@ namespace Forms
 			hazardLook(Bombs::SmokeMistHazardId(s), Config::smokeMistModel, "Smoke mist");
 			hazardLook(Bombs::OilSlickId(s), Config::oilSlickModel, "Oil slick");
 			smokeMistProjectile[s] = dh->LookupForm<RE::BGSProjectile>(Bombs::SmokeMistProjectileId(s), kPlugin);
+			fireSpreadProjectile[s] = dh->LookupForm<RE::BGSProjectile>(Bombs::FireSpreadProjectileId(s), kPlugin);
 		}
 		hazardLook(Bombs::kFrostBurstId, Config::frostBurstModel, "Frost burst");
 		hazardLook(Bombs::kFearBurstId, Config::fearBurstModel, "Fear flash");

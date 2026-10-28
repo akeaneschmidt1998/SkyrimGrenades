@@ -30,6 +30,8 @@
 //   0xD60..0xD68   smoke's second layer (low mist): hazard, explosion, projectile per strength;
 //                  FirePots.dll drops it where a smoke bomb burst
 //   0xD70..0xD72   short "burst" hazards that give frost, fear and frenzy something to see
+//   0xD74..0xD79   fire's spread: explosion + projectile per strength placing burning ground;
+//                  FirePots.dll drops a ring of them around a fire burst
 //   Visible looks are borrowed at load from vanilla forms by FirePots.dll ([Visuals]): hazards
 //   take a borrowed model reliably, explosions apparently don't.
 //
@@ -237,6 +239,37 @@ for (var s = 0; s < 3; s++)
 var frostBurst = MakeHazard(0xD70, "FP_FrostBurstVisual", "Frost", 200f, 3f, null);
 var fearBurst = MakeHazard(0xD71, "FP_FearBurstVisual", "Flash", 200f, 2f, null);
 var frenzyBurst = MakeHazard(0xD72, "FP_FrenzyBurstVisual", "Frenzy", 200f, 3f, null);
+
+// Fire's spread: FirePots.dll drops these in a ring around a fire burst so the burning ground
+// covers the blast (vanilla burning-ground patches; no damage of their own beyond the fire).
+for (var s = 0; s < 3; s++)
+{
+    var fex = new Explosion(Own((uint)(0xD74 + s)), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = $"FP_{StrengthNames[s]}FireSpreadExplosion",
+        Name = "Fire",
+        Radius = 10f,
+        Flags = 0,
+        SoundLevel = SoundLevel.Silent,
+    };
+    fex.PlacedObject.SetTo(s == 2 ? FireLgLong : FireLgShort);
+    mod.Explosions.Add(fex);
+    var fpr = new Projectile(Own((uint)(0xD77 + s)), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = $"FP_{StrengthNames[s]}FireSpreadProjectile",
+        Type = Projectile.TypeEnum.Missile,
+        Flags = Projectile.Flag.Explosion,
+        Gravity = 1f,
+        Speed = 300f,
+        Range = 1000f,
+        CollisionRadius = 4f,
+        Lifetime = 3f,
+        SoundLevel = (uint)SoundLevel.Silent,
+    };
+    fpr.Explosion.SetTo(fex.FormKey);
+    fpr.CollisionLayer.SetTo(L_PROJECTILE);
+    mod.Projectiles.Add(fpr);
+}
 // Oil: slows anyone in the slick.
 var oilSlow = Mgef(0xCEF, "FP_OilSlow", "Oil Slick", "Slowed by the oil.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.SpeedMult },
