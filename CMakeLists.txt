@@ -50,6 +50,7 @@ find_package(imgui CONFIG REQUIRED)
 set(SOURCES
 	src/main.cpp
 	src/ArcDraw.cpp
+	src/BottleReturn.cpp
 	src/Config.cpp
 	src/Crafting.cpp
 	src/Forms.cpp
@@ -62,6 +63,7 @@ set(HEADERS
 	src/PCH.h
 	src/ArcDraw.h
 	src/ArcState.h
+	src/BottleReturn.h
 	src/Ballistics.h
 	src/Config.h
 	src/Crafting.h

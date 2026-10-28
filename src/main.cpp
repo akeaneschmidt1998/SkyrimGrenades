@@ -1,3 +1,4 @@
+#include "BottleReturn.h"
 #include "Config.h"
 #include "Forms.h"
 #include "Overlay.h"
@@ -29,6 +30,7 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			Forms::Load();
+			BottleReturn::Init();
 			Overlay::Install();
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:

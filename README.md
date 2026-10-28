@@ -30,10 +30,18 @@ thing it touches.
 
 **Press H anywhere** (outside menus and dialogue) to make pots. Three short menus:
 
-1. **Choose a container**: the empty bottles, jugs, pots and urns you carry, with counts.
-2. **Choose a filling**: the fillings you have enough of, each saying which pot it makes,
+1. **Choose a container**: every container, with how many you carry (the ones you have first).
+2. **Choose a filling**: every filling, with how many you carry and which pot it makes,
    e.g. `Fire Salts (4) - Fire Pot` or `Charred Skeever Hide x2 (5) - Fire Pot`.
-3. **How many**: 1, 5 or All (skipped when you can only make one).
+3. **How many**: 1, 5 or All (skipped when you can only make one). If you can't make any, it
+   says what one takes and what you're missing.
+
+It always opens, even with nothing usable, so it's also the list of what pots can be made from.
+
+**Empty bottles come back when you drink.** Wines give their matching empty bottle; mead, ale and
+spirits give an empty wine bottle (vanilla has no empty mead bottle); modded drinks that reuse a
+vanilla bottle model are matched automatically. If you already use a bottle-return mod, set
+`bReturnEmptyBottles = 0` so you don't get two.
 
 Each menu has Back and Cancel, and long lists page after 8 entries. There are no recipes at the
 cooking pot.
@@ -56,6 +64,7 @@ For testing: `help "fire pot" 4` (or `"frost pot"`) in the console gives the ID,
 |---|---|---|
 | Pot items | `FirePots.esp` (`FP_FirePot`, `FP_FrostPot`) | Misc items, 1 lb |
 | Pot-making menu | `src/Crafting.cpp` | Craft key → native message boxes: container → filling → amount; lists from the INI |
+| Bottle return | `src/BottleReturn.cpp` | Equip (= drink) event on the player → adds the drink's empty bottle |
 | Flight | `FP_FirePotProjectile` | Missile with gravity that explodes on contact; launched by the DLL from the throwing hand with the wind-up speed |
 | Shatter + fire | `FP_FirePotExplosion` | Sounds, scorch decal, fire-damage burst (`FP_FirePotBurstEnch`), places vanilla `FireSmLongHazard` |
 | Shatter + frost | `FP_FrostPotExplosion` | Sounds, frost decal, frost-damage burst (`FP_FrostPotBurstEnch`) |
@@ -114,9 +123,10 @@ Each step adds one thing. Log: `Documents/My Games/Skyrim Special Edition/SKSE/F
 
 **B. Wind-up and arc**
 2. With no pots, press G: "You have no Fire Pots or Frost Pots."
-   With an empty wine bottle, 3 Fire Salts and 4 Charred Skeever Hide, press H: the bottle is
-   listed; pick it, then both fillings are listed; pick the salts, choose 1: one Fire Pot, one
-   bottle and one salt gone. With no container: "You need an empty bottle, jug or pot...".
+   With nothing, press H: the menu still opens with every container at (0); pick one and every
+   filling is listed; pick one and it says what a pot takes. With an empty wine bottle and 3 Fire
+   Salts: pick the bottle, then the salts, choose 1: one Fire Pot, one bottle and one salt gone.
+   Drink a wine: an Empty Wine Bottle appears (the log lists every drink -> bottle pair).
 3. Add 10 pots. Hold G: the meter fills over about a second and an arc leaves your left hand.
    Look around while holding: the arc and ring follow. Aim at a wall: the ring stands up on it.
    Aim at an NPC: the ring turns red when the arc ends on them.

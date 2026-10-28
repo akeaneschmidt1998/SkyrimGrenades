@@ -47,6 +47,16 @@ namespace
 			f.type = key == "sfrostfilling" ? 1 : 0;
 			fillings.push_back(std::move(f));
 		}
+		else if (key == "breturnemptybottles")  returnEmptyBottles = ParseBool(val);
+		else if (key == "busebuiltinbottles")   useBuiltInBottles = ParseBool(val);
+		else if (key == "bmatchbottlesbymodel") matchBottlesByModel = ParseBool(val);
+		else if (key == "sbottle") {
+			const auto arrow = val.find("->");
+			if (arrow == std::string::npos) {
+				throw std::invalid_argument("want drink -> empty");
+			}
+			bottles.emplace_back(Trim(val.substr(0, arrow)), Trim(val.substr(arrow + 2)));
+		}
 		else if (key == "icyclekey")          cycleKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "ireloadconfigkey")   reloadConfigKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "fminspeed")          minSpeed = (std::max)(50.0f, std::stof(val));
@@ -115,6 +125,7 @@ namespace Config
 	{
 		containers.clear();
 		fillings.clear();
+		bottles.clear();
 		if (!ReadIni(kMainIni)) {
 			logger::warn("{} not found, using defaults", kMainIni.string());
 		}

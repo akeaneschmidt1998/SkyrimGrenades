@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Config
@@ -58,6 +59,12 @@ namespace Config
 	};
 	inline std::vector<std::string> containers;
 	inline std::vector<Filling>     fillings;
+
+	// --- Bottle return: drinking gives the empty bottle back ---
+	inline bool returnEmptyBottles = true;
+	inline bool useBuiltInBottles = true;    // the vanilla drink -> bottle list
+	inline bool matchBottlesByModel = true;  // other drinks that use an empty container's bottle model
+	inline std::vector<std::pair<std::string, std::string>> bottles;  // sBottle = drink -> empty
 
 	// --- Messages ---
 	inline bool printToConsole = true;
