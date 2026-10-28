@@ -1,6 +1,7 @@
 #include "BottleReturn.h"
 #include "Config.h"
 #include "Forms.h"
+#include "LeveledLists.h"
 #include "Overlay.h"
 #include "Thrower.h"
 
@@ -31,6 +32,7 @@ namespace
 		case SKSE::MessagingInterface::kDataLoaded:
 			Forms::Load();
 			BottleReturn::Init();
+			LeveledLists::Inject();
 			Overlay::Install();
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:

@@ -49,7 +49,7 @@ namespace
 
 	bool LoadType(RE::TESDataHandler* a_dh, Forms::PotType& a_type)
 	{
-		a_type.item = a_dh->LookupForm<RE::TESObjectMISC>(a_type.baseId, Forms::kPlugin);
+		a_type.item = a_dh->LookupForm<RE::ScrollItem>(a_type.itemId, Forms::kPlugin);
 		a_type.projectile = a_dh->LookupForm<RE::BGSProjectile>(a_type.baseId + 1, Forms::kPlugin);
 		a_type.explosion = a_dh->LookupForm<RE::BGSExplosion>(a_type.baseId + 2, Forms::kPlugin);
 		if (!a_type.Ready()) {
@@ -95,8 +95,8 @@ namespace Forms
 	std::vector<PotType>& Types()
 	{
 		static std::vector<PotType> types{
-			PotType{ "Fire Pot", 0x800, &Config::firePotModel, &Config::fireExplosionModel },
-			PotType{ "Frost Pot", 0x810, &Config::frostPotModel, &Config::frostExplosionModel },
+			PotType{ "Fire Pot", 0x820, 0x800, &Config::firePotModel, &Config::fireExplosionModel },
+			PotType{ "Frost Pot", 0x830, 0x810, &Config::frostPotModel, &Config::frostExplosionModel },
 		};
 		return types;
 	}

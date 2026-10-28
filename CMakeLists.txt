@@ -54,6 +54,7 @@ set(SOURCES
 	src/Config.cpp
 	src/Crafting.cpp
 	src/Forms.cpp
+	src/LeveledLists.cpp
 	src/Overlay.cpp
 	src/OverlayD3D.cpp
 	src/Thrower.cpp
@@ -68,6 +69,7 @@ set(HEADERS
 	src/Config.h
 	src/Crafting.h
 	src/Forms.h
+	src/LeveledLists.h
 	src/Overlay.h
 	src/OverlayD3D.h
 	src/Thrower.h

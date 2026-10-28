@@ -5,16 +5,17 @@ namespace Forms
 {
 	inline constexpr std::string_view kPlugin = "FirePots.esp";
 
-	// One throwable kind. Form IDs in the ESP are base, base+1 (projectile), base+2 (explosion)
-	// (tools/MakePlugin/Program.cs).
+	// One throwable kind (tools/MakePlugin/Program.cs): the item is a scroll at itemId; the
+	// projectile and explosion are at baseId + 1 and + 2.
 	struct PotType
 	{
 		const char*        name;    // "Fire Pot"
-		RE::FormID         baseId;  // local ID of the item
+		RE::FormID         itemId;  // local ID of the scroll item
+		RE::FormID         baseId;
 		const std::string* potModel;        // INI setting: model source for item + flying pot
 		const std::string* explosionModel;  // INI setting: model source for the burst
 
-		RE::TESObjectMISC* item = nullptr;
+		RE::ScrollItem*    item = nullptr;
 		RE::BGSProjectile* projectile = nullptr;
 		RE::BGSExplosion*  explosion = nullptr;
 

@@ -57,6 +57,25 @@ namespace
 			}
 			bottles.emplace_back(Trim(val.substr(0, arrow)), Trim(val.substr(arrow + 2)));
 		}
+		else if (key == "baddtoleveledlists")   addToLeveledLists = ParseBool(val);
+		else if (key == "sloot") {
+			// list, fire|frost, level, count
+			std::vector<std::string> parts;
+			std::string               rest = val;
+			for (std::size_t c; (c = rest.find(',')) != std::string::npos; rest.erase(0, c + 1)) {
+				parts.push_back(Trim(rest.substr(0, c)));
+			}
+			parts.push_back(Trim(rest));
+			if (parts.size() != 4) {
+				throw std::invalid_argument("want list, fire|frost, level, count");
+			}
+			Loot l;
+			l.list = parts[0];
+			l.type = Lower(parts[1]).starts_with("frost") ? 1 : 0;
+			l.level = std::clamp(std::stoi(parts[2]), 1, 255);
+			l.count = std::clamp(std::stoi(parts[3]), 1, 100);
+			loot.push_back(std::move(l));
+		}
 		else if (key == "icyclekey")          cycleKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "ireloadconfigkey")   reloadConfigKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "fminspeed")          minSpeed = (std::max)(50.0f, std::stof(val));
@@ -67,6 +86,8 @@ namespace
 		else if (key == "fcooldownms")        cooldownMs = (std::max)(0.0f, std::stof(val));
 		else if (key == "bcancelonblock")     cancelOnBlock = ParseBool(val);
 		else if (key == "sthrownode")         throwNode = Unquote(val);
+		else if (key == "sthrownoderight")    throwNodeRight = Unquote(val);
+		else if (key == "bcalibratespeed")    calibrateSpeed = ParseBool(val);
 		else if (key == "fprojectilescale")   projectileScale = std::clamp(std::stof(val), 0.05f, 5.0f);
 		else if (key == "bshowarc")           showArc = ParseBool(val);
 		else if (key == "farcstep")           arcStep = std::clamp(std::stof(val), 0.005f, 0.2f);
@@ -126,6 +147,7 @@ namespace Config
 		containers.clear();
 		fillings.clear();
 		bottles.clear();
+		loot.clear();
 		if (!ReadIni(kMainIni)) {
 			logger::warn("{} not found, using defaults", kMainIni.string());
 		}
@@ -157,6 +179,17 @@ namespace Config
 		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 1; })) {
 			fillings.push_back({ "Skyrim.esm|03AD5F", 1, 1 });  // Frost Salts
 			fillings.push_back({ "Skyrim.esm|03AD6A", 1, 1 });  // Ice Wraith Teeth
+		}
+		if (loot.empty()) {
+			loot = {
+				{ "Skyrim.esm|09AF0A", 0, 1, 3 },   // general goods merchants
+				{ "Skyrim.esm|09AF0A", 1, 10, 2 },
+				{ "Skyrim.esm|09AF13", 0, 1, 2 },   // apothecaries
+				{ "Skyrim.esm|09AF13", 1, 1, 2 },
+				{ "Skyrim.esm|105240", 1, 1, 2 },   // court wizards' scroll stock
+				{ "Skyrim.esm|10E0DD", 0, 1, 1 },   // bandit random loot
+				{ "Skyrim.esm|10FAB6", 0, 1, 1 },   // Forsworn random loot
+			};
 		}
 		logger::info("Crafting: key {}, {} containers, {} fillings, in combat: {}", craftKey, containers.size(), fillings.size(), craftInCombat);
 

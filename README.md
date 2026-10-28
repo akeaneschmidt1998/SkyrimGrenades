@@ -4,14 +4,19 @@ Throwable fire and frost pots for Skyrim SE/AE (SKSE plugin, CommonLibSSE-NG). W
 see exactly where it will land, and set the ground on fire.
 
 **Controls**
-- **Hold G** to wind up. The longer you hold (1 s to full), the farther it goes. While you hold,
-  an arc shows the flight, a ring shows the blast radius where it lands (red when it will hit
-  someone directly), and a meter under the crosshair shows the wind-up and how many pots you have.
-- **Release G** to throw. Your weapon stays drawn; the pot leaves from your left hand.
-- **Tap G** or **press block** to cancel without using a pot.
+- **Pots are scrolls.** They sit in the Scrolls tab, can be bought, sold, stashed and found as loot,
+  and can be favorited and **equipped to a hand** like any scroll (Favorites + number keys swap
+  between them).
+- **With a pot in a hand, hold that hand's attack button** to wind up and **release** to throw.
+  Vanilla never casts it (the scroll never finishes charging); the throw is the mod's.
+- **Or hold G** to wind up and release to throw, with nothing equipped (uses the kind picked with
+  V) or with a pot in hand (throws that one).
+- While winding up, an arc shows the flight, a ring shows the blast radius where it lands (red when
+  it will hit someone directly), and a meter under the crosshair shows the wind-up and how many
+  pots you have. 1 s to full; a full throw lands about 20 m away on flat ground.
+- **Tap** (or press block during a G wind-up) to cancel without using a pot.
+- **Press V** to switch Fire Pot / Frost Pot (swaps the pot in your hand if you're holding one).
 - **Press H** to make pots (see below).
-- **Press V** to switch between Fire Pots and Frost Pots. If you run out of one, the next throw
-  switches to the other by itself.
 
 ![Arc preview](docs/arc_preview.png)
 
@@ -56,6 +61,9 @@ cooking pot.
 Both lists live in `FirePots.ini` (`[Containers]`, `[Fillings]`), so adding a modded bottle or a
 new filling is one line.
 
+**Where else they come from:** general goods merchants and apothecaries stock them, court wizards
+stock Frost Pots, and bandits and Forsworn sometimes carry Fire Pots (all set in `[Loot]`).
+
 For testing: `help "fire pot" 4` (or `"frost pot"`) in the console gives the ID, then
 `player.additem <id> 10`.
 
@@ -63,7 +71,8 @@ For testing: `help "fire pot" 4` (or `"frost pot"`) in the console gives the ID,
 
 | Piece | Where | How |
 |---|---|---|
-| Pot items | `FirePots.esp` (`FP_FirePot`, `FP_FrostPot`) | Misc items, 1 lb |
+| Pot items | `FirePots.esp` (`FP_FirePot`, `FP_FrostPot`) | Scrolls (either hand), 1 lb; a do-nothing script effect with a 300 s charge so vanilla never casts them |
+| Loot | `src/LeveledLists.cpp` | Adds the pots to vanilla merchant and bandit/Forsworn leveled lists at load (`[Loot]` in the INI) |
 | Pot-making menu | `src/Crafting.cpp` | Craft key → native message boxes: container → filling → amount; lists from the INI |
 | Bottle return | `src/BottleReturn.cpp` | Equip (= drink) event on the player → adds the drink's empty bottle |
 | Flight | `FP_FirePotProjectile` | Missile with gravity that explodes on contact; launched by the DLL from the throwing hand with the wind-up speed |
@@ -134,6 +143,8 @@ Each step adds one thing. Log: `Documents/My Games/Skyrim Special Edition/SKSE/F
    Aim at an NPC: the ring turns red when the arc ends on them.
 4. Tap G quickly: "Hold the throw key to wind up..." and no pot is used. Hold G and press block:
    "Throw cancelled", no pot used.
+4b. Equip a Fire Pot to your left hand (Favorites). Hold right-click: the arc appears from the
+   left hand; release: it's thrown and one pot is used. The vanilla scroll never casts.
 5. Add a few Frost Pots and press V: "Frost Pot (n)", and the arc turns blue. Throw them all; the
    next G switches back to Fire Pots by itself.
 
@@ -146,6 +157,13 @@ Each step adds one thing. Log: `Documents/My Games/Skyrim Special Edition/SKSE/F
 9. First person and third person both work; throws are blocked while riding or swimming.
 
 ## Known unknowns (only an in-game test can settle these)
+
+- **How far NPCs notice a pot.** The flight and the shatter are now "silent" to AI (the sounds still
+  play for you), so only what the blast actually hits should turn hostile. If enemies far away
+  still come running, the burning patch (a vanilla hazard) is the next suspect.
+- **Equipped-pot input.** A pot in hand uses that hand's attack button; vanilla starts charging the
+  scroll at the same time but never finishes (300 s charge), so nothing else should happen. If a
+  scroll ever casts by itself, tell me.
 
 - **Pitch sign of `Projectile::Launch`.** Assumed Skyrim's convention (positive = down). If it's the
   other way the first throw goes the wrong way vertically; the flight check detects it, flips it and

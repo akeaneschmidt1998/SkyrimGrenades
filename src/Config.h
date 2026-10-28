@@ -16,14 +16,15 @@ namespace Config
 	inline std::uint32_t craftKey = 35;       // H: open the pot-making menu
 	inline bool          craftInCombat = true;  // allow making pots while in combat
 	inline std::uint32_t reloadConfigKey = 0;  // re-read the INI in game
-	inline float         minSpeed = 700.0f;    // units/s at the shortest throw
-	inline float         maxSpeed = 1700.0f;   // units/s at full wind-up
+	inline float         minSpeed = 400.0f;    // units/s at the shortest throw (~6 m/s)
+	inline float         maxSpeed = 950.0f;    // units/s at full wind-up (~13.5 m/s, ~20 m at 45 degrees)
 	inline float         chargeSeconds = 1.0f;  // time to full wind-up
 	inline float         loftDegrees = 12.0f;   // extra upward angle over the crosshair
 	inline float         minHoldMs = 150.0f;    // shorter taps cancel (no pot used)
 	inline float         cooldownMs = 600.0f;   // between throws
 	inline bool          cancelOnBlock = true;  // pressing block during the wind-up cancels it
-	inline std::string   throwNode = "NPC L Hand [LHnd]";  // where the pot leaves from
+	inline std::string   throwNode = "NPC L Hand [LHnd]";       // where a left-hand / throw-key pot leaves from
+	inline std::string   throwNodeRight = "NPC R Hand [RHnd]";  // where a right-hand pot leaves from
 	inline float         projectileScale = 0.6f;  // size of the flying pot model
 
 	// --- Preview ---
@@ -41,6 +42,7 @@ namespace Config
 	// throw. Set it to the logged "measured gravity" to skip the first-throw learning.
 	inline float gravityUnits = 0.0f;
 	inline bool  autoCalibrate = true;
+	inline bool  calibrateSpeed = false;  // also correct the launch speed from the measurement
 
 	// --- Visuals: borrowed from vanilla forms at load ("Plugin.esm|HEXID", or a mesh path) ---
 	inline std::string firePotModel = "Skyrim.esm|0B9BD2";         // GlazedPot01: item + flying pot
@@ -65,6 +67,17 @@ namespace Config
 	inline bool useBuiltInBottles = true;    // the vanilla drink -> bottle list
 	inline bool matchBottlesByModel = true;  // other drinks that use an empty container's bottle model
 	inline std::vector<std::pair<std::string, std::string>> bottles;  // sBottle = drink -> empty
+
+	// --- Loot: pots added to vanilla leveled lists at load ---
+	struct Loot
+	{
+		std::string list;   // "Skyrim.esm|09AF0A"
+		int         type = 0;   // 0 = Fire Pot, 1 = Frost Pot
+		int         level = 1;  // player level it starts showing up at
+		int         count = 1;
+	};
+	inline bool              addToLeveledLists = true;
+	inline std::vector<Loot> loot;  // sLoot = list, fire|frost, level, count
 
 	// --- Messages ---
 	inline bool printToConsole = true;

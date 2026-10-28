@@ -50,10 +50,12 @@ namespace
 	{
 		std::atomic<bool> keyDown{ false };   // throw key currently held
 		std::atomic<bool> pressed{ false };   // throw key went down since the last tick
-		std::atomic<bool> cancel{ false };    // block pressed since the last tick
 		std::atomic<bool> reload{ false };
 		std::atomic<bool> cycle{ false };     // cycle key pressed since the last tick
 		std::atomic<bool> craft{ false };     // craft key pressed since the last tick
+		// attack buttons per hand (0 = right "Right Attack/Block", 1 = left "Left Attack/Block")
+		std::atomic<bool> handDown[2]{ false, false };
+		std::atomic<bool> handPressed[2]{ false, false };
 	};
 	InputFlags g_input;
 
@@ -97,10 +99,16 @@ namespace
 					g_input.reload = true;
 					continue;
 				}
-				if (Config::cancelOnBlock && button->IsDown()) {
-					auto* events = RE::UserEvents::GetSingleton();
-					if (events && button->QUserEvent() == events->leftAttack) {  // block with a one-hander
-						g_input.cancel = true;
+				if (auto* events = RE::UserEvents::GetSingleton()) {
+					const auto& ev = button->QUserEvent();
+					const int   hand = ev == events->rightAttack ? 0 : ev == events->leftAttack ? 1 : -1;
+					if (hand >= 0) {
+						if (button->IsDown()) {
+							g_input.handDown[hand] = true;
+							g_input.handPressed[hand] = true;
+						} else if (button->IsUp()) {
+							g_input.handDown[hand] = false;
+						}
 					}
 				}
 			}
@@ -129,6 +137,32 @@ namespace
 	int CountPots(RE::PlayerCharacter* a_player, const Forms::PotType& a_type)
 	{
 		return a_type.Ready() ? CountItem(a_player, a_type.item) : 0;
+	}
+
+	// Which pot type a form is (-1 = not a pot).
+	int PotTypeOf(const RE::TESForm* a_form)
+	{
+		const auto& types = Forms::Types();
+		for (std::size_t i = 0; i < types.size(); ++i) {
+			if (a_form && types[i].item == a_form) {
+				return static_cast<int>(i);
+			}
+		}
+		return -1;
+	}
+
+	// Pot type equipped in that hand (-1 = none).
+	int HandPot(RE::PlayerCharacter* a_player, bool a_left) { return PotTypeOf(a_player->GetEquippedObject(a_left)); }
+
+	// Puts a pot of that type in the hand (like picking it in Favorites).
+	void EquipPot(RE::PlayerCharacter* a_player, int a_type, bool a_left)
+	{
+		auto* mgr = RE::ActorEquipManager::GetSingleton();
+		auto* dom = RE::BGSDefaultObjectManager::GetSingleton();
+		auto* slot = dom ? dom->GetObject<RE::BGSEquipSlot>(a_left ? RE::DEFAULT_OBJECT::kLeftHandEquip : RE::DEFAULT_OBJECT::kRightHandEquip) : nullptr;
+		if (mgr && slot) {
+			mgr->EquipObject(a_player, Forms::Types()[a_type].item, nullptr, 1, slot);
+		}
 	}
 
 	// Moves the selection to the next type the player carries (starting after the current one when
@@ -204,9 +238,9 @@ namespace
 		if (Config::gravityUnits <= 0.0f && perUnit > 50.0f && perUnit < 5000.0f) {
 			g_gravityPerUnit = perUnit;
 		}
-		if (askedH > 100.0f) {
+		if (Config::calibrateSpeed && askedH > 100.0f) {
 			const float scale = fit->horizontalSpeed / askedH * g_speedScale;
-			if (scale > 0.25f && scale < 4.0f) {
+			if (scale > 0.5f && scale < 2.0f) {
 				g_speedScale = scale;
 			}
 		}
@@ -249,7 +283,7 @@ namespace
 		Vec3 forward;  // camera forward (where the crosshair points)
 	};
 
-	std::optional<Aim> GetAim(RE::PlayerCharacter* a_player)
+	std::optional<Aim> GetAim(RE::PlayerCharacter* a_player, bool a_leftHand)
 	{
 		auto* camera = RE::PlayerCamera::GetSingleton();
 		if (!camera || !camera->cameraRoot) {
@@ -264,7 +298,8 @@ namespace
 		const bool firstPerson = camera->IsInFirstPerson();
 		RE::NiAVObject* hand = nullptr;
 		if (auto* root = a_player->Get3D(firstPerson)) {
-			hand = root->GetObjectByName(RE::BSFixedString(Config::throwNode.c_str()));
+			const auto& node = a_leftHand ? Config::throwNode : Config::throwNodeRight;
+			hand = root->GetObjectByName(RE::BSFixedString(node.c_str()));
 		}
 		if (hand) {
 			aim.origin = ToVec(hand->world.translate);
@@ -452,6 +487,8 @@ namespace
 	struct ThrowState
 	{
 		Phase phase = Phase::kIdle;
+		int   source = 0;       // what started it: 0 = throw key, 1 = right attack, 2 = left attack
+		bool  leftHand = true;  // which hand the pot leaves from
 		float held = 0.0f;      // seconds the key has been held
 		float cooldown = 0.0f;  // seconds until the next throw is allowed
 		int   pots = 0;         // counted when the wind-up starts
@@ -465,22 +502,35 @@ namespace
 		ArcState::Clear();
 	}
 
-	void Tick(RE::PlayerCharacter* a_player, float a_dt)
+	bool IsDown(int a_source)
 	{
+		return a_source == 0 ? g_input.keyDown.load() : g_input.handDown[a_source - 1].load();
+	}
+
+	void Tick(RE::PlayerCharacter* a_player, float)
+	{
+		// Real time, not the update's delta (it can be scaled, or come more than once a frame).
+		static auto last = std::chrono::steady_clock::now();
+		const auto  now = std::chrono::steady_clock::now();
+		const float dt = std::clamp(std::chrono::duration<float>(now - last).count(), 0.0f, 0.1f);
+		last = now;
+
 		if (g_input.reload.exchange(false)) {
 			Config::Load();
 			Report("Settings reloaded", true);
 		}
 
-		TrackFlight(a_dt);
-		g_throw.cooldown = (std::max)(0.0f, g_throw.cooldown - a_dt);
+		TrackFlight(dt);
+		g_throw.cooldown = (std::max)(0.0f, g_throw.cooldown - dt);
 
-		const bool pressed = g_input.pressed.exchange(false);
-		const bool cancel = g_input.cancel.exchange(false);
+		const bool keyPressed = g_input.pressed.exchange(false);
+		const bool handPressed[2] = { g_input.handPressed[0].exchange(false), g_input.handPressed[1].exchange(false) };
+		const int  potRight = Forms::Ready() ? HandPot(a_player, false) : -1;
+		const int  potLeft = Forms::Ready() ? HandPot(a_player, true) : -1;
 
 		if (g_input.craft.exchange(false) && g_throw.phase == Phase::kIdle) {
-			auto* ui = RE::UI::GetSingleton();
-			auto* controls = RE::ControlMap::GetSingleton();
+			auto*      ui = RE::UI::GetSingleton();
+			auto*      controls = RE::ControlMap::GetSingleton();
 			const bool free = ui && controls && !ui->GameIsPaused() && !ui->IsMenuOpen(RE::Console::MENU_NAME) &&
 			                  controls->IsMovementControlsEnabled();  // not in dialogue, cutscenes, other menus
 			if (free) {
@@ -488,17 +538,39 @@ namespace
 			}
 		}
 
-		if (g_input.cycle.exchange(false) && Forms::Ready()) {
-			if (SelectCarriedType(a_player, true)) {
-				g_throw.pots = CountPots(a_player, CurrentType());
-				Report(fmt::format("{} ({})", CurrentType().name, g_throw.pots), true);
+		if (g_input.cycle.exchange(false) && Forms::Ready() && g_throw.phase == Phase::kIdle) {
+			if (potLeft >= 0 || potRight >= 0) {
+				// a pot in hand: swap it for the next kind you carry
+				const bool left = potLeft >= 0;
+				const int  held = left ? potLeft : potRight;
+				g_typeIndex = static_cast<std::size_t>(held);
+				if (SelectCarriedType(a_player, true) && static_cast<int>(g_typeIndex) != held) {
+					EquipPot(a_player, static_cast<int>(g_typeIndex), left);
+					Report(fmt::format("{} ({})", CurrentType().name, CountPots(a_player, CurrentType())), true);
+				} else {
+					Report("You have no other kind of pot.", true);
+				}
+			} else if (SelectCarriedType(a_player, true)) {
+				Report(fmt::format("{} ({})", CurrentType().name, CountPots(a_player, CurrentType())), true);
 			} else {
 				Report("You have no Fire Pots or Frost Pots.", true);
 			}
 		}
 
 		if (g_throw.phase == Phase::kIdle) {
-			if (!pressed) {
+			// What starts a throw: the throw key, or the attack button of a hand holding a pot
+			// (vanilla can't cast the pot: the scroll never finishes charging).
+			const auto* state = a_player->AsActorState();
+			const bool  drawn = state && state->IsWeaponDrawn();
+			int         source = -1;
+			if (keyPressed) {
+				source = 0;
+			} else if (drawn && handPressed[0] && potRight >= 0) {
+				source = 1;
+			} else if (drawn && handPressed[1] && potLeft >= 0) {
+				source = 2;
+			}
+			if (source < 0) {
 				return;
 			}
 			if (!Forms::Ready()) {
@@ -514,42 +586,58 @@ namespace
 			if (g_throw.cooldown > 0.0f) {
 				return;
 			}
-			// throw the selected type; if you're out of it, switch to one you have
-			const auto before = g_typeIndex;
-			if (!SelectCarriedType(a_player, false)) {
-				Report("You have no Fire Pots or Frost Pots.", true);
-				return;
-			}
-			if (g_typeIndex != before) {
-				Report(fmt::format("Switched to {}", CurrentType().name), false);
+			if (source == 1 || source == 2) {
+				g_typeIndex = static_cast<std::size_t>(source == 1 ? potRight : potLeft);
+				g_throw.leftHand = source == 2;
+			} else if (potLeft >= 0 || potRight >= 0) {
+				// throw key with a pot in hand: throw that one, from that hand
+				g_throw.leftHand = potLeft >= 0;
+				g_typeIndex = static_cast<std::size_t>(g_throw.leftHand ? potLeft : potRight);
+			} else {
+				// nothing in hand: the selected kind (V); if you're out of it, one you have
+				g_throw.leftHand = true;
+				const auto before = g_typeIndex;
+				if (!SelectCarriedType(a_player, false)) {
+					Report("You have no Fire Pots or Frost Pots.", true);
+					return;
+				}
+				if (g_typeIndex != before) {
+					Report(fmt::format("Switched to {}", CurrentType().name), false);
+				}
 			}
 			g_throw.pots = CountPots(a_player, CurrentType());
+			if (g_throw.pots <= 0) {
+				return;
+			}
+			g_throw.source = source;
 			g_throw.phase = Phase::kWinding;
 			g_throw.held = 0.0f;
 		}
 
 		// --- winding up ---
-		if (cancel || Blocker(a_player)) {
+		// Block cancels a throw-key wind-up (unless the left hand is the one holding a pot).
+		const bool cancel = Config::cancelOnBlock && g_throw.source == 0 && handPressed[1] && potLeft < 0;
+		if (cancel || Blocker(a_player) || g_throw.held > 60.0f) {
 			if (cancel) {
 				Report("Throw cancelled", false);
 			}
 			StopWinding();
 			return;
 		}
-		g_throw.held += a_dt;
+		g_throw.held += dt;
 		const float charge = std::clamp(g_throw.held / Config::chargeSeconds, 0.0f, 1.0f);
 
-		const auto aim = GetAim(a_player);
+		const auto aim = GetAim(a_player, g_throw.leftHand);
 		if (!aim) {
 			StopWinding();
 			return;
 		}
 		const Plan plan = MakePlan(*aim, charge);
 
-		if (!g_input.keyDown) {
+		if (!IsDown(g_throw.source)) {
 			// released: throw, unless it was only a tap
 			if (g_throw.held * 1000.0f < Config::minHoldMs) {
-				Report("Hold the throw key to wind up, release to throw.", true);
+				Report("Hold to wind up, release to throw.", true);
 			} else {
 				Launch(a_player, plan, charge);
 				g_throw.cooldown = Config::cooldownMs / 1000.0f;
@@ -611,8 +699,11 @@ namespace Thrower
 		g_flight = Flight{};
 		g_input.keyDown = false;
 		g_input.pressed = false;
-		g_input.cancel = false;
 		g_input.cycle = false;
 		g_input.craft = false;
+		for (int h = 0; h < 2; ++h) {
+			g_input.handDown[h] = false;
+			g_input.handPressed[h] = false;
+		}
 	}
 }
