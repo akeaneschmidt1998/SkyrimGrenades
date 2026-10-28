@@ -2,6 +2,7 @@
 #include "Config.h"
 #include "Forms.h"
 #include "LeveledLists.h"
+#include "McmReload.h"
 #include "Overlay.h"
 #include "Thrower.h"
 
@@ -33,6 +34,7 @@ namespace
 			Forms::Load();
 			BottleReturn::Init();
 			LeveledLists::Inject();
+			McmReload::Register();
 			Overlay::Install();
 			break;
 		case SKSE::MessagingInterface::kPreLoadGame:

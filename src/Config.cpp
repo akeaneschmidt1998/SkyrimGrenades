@@ -6,6 +6,8 @@
 namespace
 {
 	const std::filesystem::path kMainIni{ "Data/SKSE/Plugins/FirePots.ini" };
+	// Written by MCM Helper when you change something in the Mod Configuration Menu.
+	const std::filesystem::path kMcmUserIni{ "Data/MCM/Settings/FirePots.ini" };
 
 	std::string Trim(std::string s)
 	{
@@ -31,22 +33,122 @@ namespace
 		return v;
 	}
 
+	std::vector<std::string> SplitComma(const std::string& a_val)
+	{
+		std::vector<std::string> parts;
+		std::string              rest = a_val;
+		for (std::size_t c; (c = rest.find(',')) != std::string::npos; rest.erase(0, c + 1)) {
+			parts.push_back(Trim(rest.substr(0, c)));
+		}
+		parts.push_back(Trim(rest));
+		return parts;
+	}
+
+	// "Plugin.esm|ID, 2" -> form, count
+	Config::Ingredient ParseIngredient(const std::string& a_val, int a_group)
+	{
+		const auto parts = SplitComma(a_val);
+		Config::Ingredient i;
+		i.form = Unquote(parts[0]);
+		i.count = parts.size() > 1 ? std::clamp(std::stoi(parts[1]), 1, 99) : 1;
+		i.group = a_group;
+		return i;
+	}
+
+	// "fire impact mild" (any order; prefixes ok) -> bomb index
+	int ParseBomb(const std::string& a_spec)
+	{
+		int        trigger = -1, payload = -1, strength = -1;
+		std::string word;
+		std::string spec = a_spec + " ";
+		for (char c : spec) {
+			if (std::isspace(static_cast<unsigned char>(c))) {
+				if (!word.empty()) {
+					const auto w = Lower(word);
+					if (w == "fuse") {
+						// "short fuse" / "long fuse": the first word already decided it
+					} else if (auto p = Bombs::Match(w, Bombs::kPayloadNames); p && payload < 0) {
+						payload = *p;
+					} else if (auto t = Bombs::Match(w, Bombs::kTriggerNames); t && trigger < 0) {
+						trigger = *t;
+					} else if (auto s = Bombs::Match(w, Bombs::kStrengthNames); s && strength < 0) {
+						strength = *s;
+					}
+					word.clear();
+				}
+			} else {
+				word += c;
+			}
+		}
+		if (trigger < 0 || payload < 0 || strength < 0) {
+			throw std::invalid_argument("want payload trigger strength, e.g. 'fire impact mild'");
+		}
+		return Bombs::Index(trigger, payload, strength);
+	}
+
 	void Apply(const std::string& key, const std::string& val)
 	{
 		using namespace Config;
+		// repeatable list keys first
+		if (key == "scontainer") {
+			containers.push_back(Unquote(val));
+			return;
+		}
+		for (int t = 0; t < Bombs::kTriggers; ++t) {
+			auto name = Lower(std::string(Bombs::kTriggerNames[t]));
+			std::erase(name, ' ');
+			if (key == "s" + name + "ingredient") {
+				triggerIngredients.push_back(ParseIngredient(val, t));
+				return;
+			}
+		}
+		for (int p = 0; p < Bombs::kPayloads; ++p) {
+			if (key == "s" + Lower(std::string(Bombs::kPayloadNames[p])) + "filling") {
+				fillings.push_back(ParseIngredient(val, p));
+				return;
+			}
+			if (key == "s" + Lower(std::string(Bombs::kPayloadNames[p])) + "explosionmodel") {
+				explosionModel[p] = Unquote(val);
+				return;
+			}
+		}
+		for (int t = 0; t < Bombs::kTriggers; ++t) {
+			auto name = Lower(std::string(Bombs::kTriggerNames[t]));
+			std::erase(name, ' ');
+			if (key == "s" + name + "model") {
+				triggerModel[t] = Unquote(val);
+				return;
+			}
+		}
 		// clang-format off
 		if      (key == "ithrowkey")          throwKey = static_cast<std::uint32_t>(std::stoul(val));
+		else if (key == "icyclekey")          cycleKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "icraftkey")          craftKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "bcraftincombat")     craftInCombat = ParseBool(val);
-		else if (key == "scontainer")         containers.push_back(Unquote(val));
-		else if (key == "sfirefilling" || key == "sfrostfilling" || key == "ssmokefilling" || key == "sthunderfilling") {
-			Filling f;
-			const auto comma = val.find(',');
-			f.form = Trim(Unquote(val.substr(0, comma)));
-			f.count = comma == std::string::npos ? 1 : std::clamp(std::stoi(val.substr(comma + 1)), 1, 99);
-			f.type = TypeFromWord(key.substr(1, key.size() - 8));  // "sSmokeFilling" -> "smoke"
-			fillings.push_back(std::move(f));
-		}
+		else if (key == "ireloadconfigkey")   reloadConfigKey = static_cast<std::uint32_t>(std::stoul(val));
+		else if (key == "fminspeed")          minSpeed = (std::max)(50.0f, std::stof(val));
+		else if (key == "fmaxspeed")          maxSpeed = (std::max)(50.0f, std::stof(val));
+		else if (key == "fchargeseconds")     chargeSeconds = (std::max)(0.05f, std::stof(val));
+		else if (key == "floftdegrees")       loftDegrees = std::clamp(std::stof(val), -30.0f, 60.0f);
+		else if (key == "fplacereach")        placeReach = std::clamp(std::stof(val), 50.0f, 1000.0f);
+		else if (key == "fminholdms")         minHoldMs = (std::max)(0.0f, std::stof(val));
+		else if (key == "fcooldownms")        cooldownMs = (std::max)(0.0f, std::stof(val));
+		else if (key == "bcancelonblock")     cancelOnBlock = ParseBool(val);
+		else if (key == "sthrownode")         throwNode = Unquote(val);
+		else if (key == "sthrownoderight")    throwNodeRight = Unquote(val);
+		else if (key == "fprojectilescale")   projectileScale = std::clamp(std::stof(val), 0.05f, 5.0f);
+		else if (key == "bshowarc")           showArc = ParseBool(val);
+		else if (key == "farcstep")           arcStep = std::clamp(std::stof(val), 0.005f, 0.2f);
+		else if (key == "farcmaxtime")        arcMaxTime = std::clamp(std::stof(val), 0.5f, 10.0f);
+		else if (key == "bshowblastring")     showBlastRing = ParseBool(val);
+		else if (key == "farcthickness")      arcThickness = std::clamp(std::stof(val), 0.5f, 20.0f);
+		else if (key == "farcopacity")        arcOpacity = std::clamp(std::stof(val), 0.0f, 1.0f);
+		else if (key == "bshowchargemeter")   showChargeMeter = ParseBool(val);
+		else if (key == "fgravityunits")      gravityUnits = (std::max)(0.0f, std::stof(val));
+		else if (key == "bautocalibrate")     autoCalibrate = ParseBool(val);
+		else if (key == "bcalibratespeed")    calibrateSpeed = ParseBool(val);
+		else if (key == "ssmokecloudmodel")   smokeCloudModel = Unquote(val);
+		else if (key == "soilfiremodel")      oilFireModel = Unquote(val);
 		else if (key == "breturnemptybottles")  returnEmptyBottles = ParseBool(val);
 		else if (key == "busebuiltinbottles")   useBuiltInBottles = ParseBool(val);
 		else if (key == "bmatchbottlesbymodel") matchBottlesByModel = ParseBool(val);
@@ -59,58 +161,17 @@ namespace
 		}
 		else if (key == "baddtoleveledlists")   addToLeveledLists = ParseBool(val);
 		else if (key == "sloot") {
-			// list, fire|frost, level, count
-			std::vector<std::string> parts;
-			std::string               rest = val;
-			for (std::size_t c; (c = rest.find(',')) != std::string::npos; rest.erase(0, c + 1)) {
-				parts.push_back(Trim(rest.substr(0, c)));
-			}
-			parts.push_back(Trim(rest));
+			const auto parts = SplitComma(val);
 			if (parts.size() != 4) {
-				throw std::invalid_argument("want list, fire|frost, level, count");
+				throw std::invalid_argument("want list, payload trigger strength, level, count");
 			}
 			Loot l;
 			l.list = parts[0];
-			l.type = TypeFromWord(parts[1]);
-			if (l.type < 0) {
-				throw std::invalid_argument("type must be fire, frost, smoke or thunder");
-			}
+			l.bomb = ParseBomb(parts[1]);
 			l.level = std::clamp(std::stoi(parts[2]), 1, 255);
 			l.count = std::clamp(std::stoi(parts[3]), 1, 100);
 			loot.push_back(std::move(l));
 		}
-		else if (key == "icyclekey")          cycleKey = static_cast<std::uint32_t>(std::stoul(val));
-		else if (key == "ireloadconfigkey")   reloadConfigKey = static_cast<std::uint32_t>(std::stoul(val));
-		else if (key == "fminspeed")          minSpeed = (std::max)(50.0f, std::stof(val));
-		else if (key == "fmaxspeed")          maxSpeed = (std::max)(50.0f, std::stof(val));
-		else if (key == "fchargeseconds")     chargeSeconds = (std::max)(0.05f, std::stof(val));
-		else if (key == "floftdegrees")       loftDegrees = std::clamp(std::stof(val), -30.0f, 60.0f);
-		else if (key == "fminholdms")         minHoldMs = (std::max)(0.0f, std::stof(val));
-		else if (key == "fcooldownms")        cooldownMs = (std::max)(0.0f, std::stof(val));
-		else if (key == "bcancelonblock")     cancelOnBlock = ParseBool(val);
-		else if (key == "sthrownode")         throwNode = Unquote(val);
-		else if (key == "sthrownoderight")    throwNodeRight = Unquote(val);
-		else if (key == "bcalibratespeed")    calibrateSpeed = ParseBool(val);
-		else if (key == "fprojectilescale")   projectileScale = std::clamp(std::stof(val), 0.05f, 5.0f);
-		else if (key == "bshowarc")           showArc = ParseBool(val);
-		else if (key == "farcstep")           arcStep = std::clamp(std::stof(val), 0.005f, 0.2f);
-		else if (key == "farcmaxtime")        arcMaxTime = std::clamp(std::stof(val), 0.5f, 10.0f);
-		else if (key == "fblastradius")       blastRadius = (std::max)(0.0f, std::stof(val));
-		else if (key == "bshowblastring")     showBlastRing = ParseBool(val);
-		else if (key == "farcthickness")      arcThickness = std::clamp(std::stof(val), 0.5f, 20.0f);
-		else if (key == "farcopacity")        arcOpacity = std::clamp(std::stof(val), 0.0f, 1.0f);
-		else if (key == "bshowchargemeter")   showChargeMeter = ParseBool(val);
-		else if (key == "fgravityunits")      gravityUnits = (std::max)(0.0f, std::stof(val));
-		else if (key == "bautocalibrate")     autoCalibrate = ParseBool(val);
-		else if (key == "sfirepotmodel" || key == "spotmodel")             firePotModel = Unquote(val);
-		else if (key == "sfireexplosionmodel" || key == "sexplosionmodel") fireExplosionModel = Unquote(val);
-		else if (key == "sfrostpotmodel")       frostPotModel = Unquote(val);
-		else if (key == "sfrostexplosionmodel") frostExplosionModel = Unquote(val);
-		else if (key == "ssmokepotmodel")       smokePotModel = Unquote(val);
-		else if (key == "ssmokeexplosionmodel") smokeExplosionModel = Unquote(val);
-		else if (key == "ssmokecloudmodel")     smokeCloudModel = Unquote(val);
-		else if (key == "sthunderpotmodel")     thunderPotModel = Unquote(val);
-		else if (key == "sthunderexplosionmodel") thunderExplosionModel = Unquote(val);
 		else if (key == "bprinttoconsole")    printToConsole = ParseBool(val);
 		else if (key == "bshownotification")  showNotification = ParseBool(val);
 		else logger::warn("Unknown INI key '{}'", key);
@@ -146,29 +207,10 @@ namespace
 		}
 		return true;
 	}
-}
 
-namespace Config
-{
-	int TypeFromWord(const std::string& a_word)
+	void Defaults()
 	{
-		const auto w = Lower(Trim(a_word));
-		if (w.starts_with("fire")) return 0;
-		if (w.starts_with("frost")) return 1;
-		if (w.starts_with("smoke")) return 2;
-		if (w.starts_with("thunder")) return 3;
-		return -1;
-	}
-
-	void Load()
-	{
-		containers.clear();
-		fillings.clear();
-		bottles.clear();
-		loot.clear();
-		if (!ReadIni(kMainIni)) {
-			logger::warn("{} not found, using defaults", kMainIni.string());
-		}
+		using namespace Config;
 		if (containers.empty()) {
 			containers = {
 				"Skyrim.esm|0F2012", "Skyrim.esm|0F2013", "Skyrim.esm|0F2014", "Skyrim.esm|0F2015",  // empty wine bottles
@@ -179,58 +221,118 @@ namespace Config
 				"Skyrim.esm|0B9BD2", "Skyrim.esm|0B9BD4", "Skyrim.esm|0F08F6", "Skyrim.esm|0F08F7",  // pots
 			};
 		}
-		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 0; })) {
-			for (auto& [form, count] : std::initializer_list<std::pair<const char*, int>>{
-					 { "Skyrim.esm|03AD5E", 1 },      // Fire Salts
-					 { "Skyrim.esm|0F11C0", 1 },      // Dwarven Oil
-					 { "Skyrim.esm|03AD72", 1 },      // Troll Fat
-					 { "Skyrim.esm|052695", 2 },      // Charred Skeever Hide
-					 { "Skyrim.esm|063B5F", 2 },      // Spriggan Sap
-					 { "Dragonborn.esm|01CD74", 2 },  // Ash Creep Cluster
-					 { "Dragonborn.esm|01CD71", 2 },  // Ash Hopper Jelly
-					 { "Dragonborn.esm|01CD6E", 2 },  // Burnt Spriggan Wood
-					 { "Dragonborn.esm|016E26", 2 },  // Spawn Ash
-				 }) {
-				fillings.push_back({ form, count, 0 });
+		auto noneFor = [](const std::vector<Ingredient>& a_list, int a_group) {
+			return std::ranges::none_of(a_list, [&](const Ingredient& i) { return i.group == a_group; });
+		};
+		using B = Bombs::Trigger;
+		const std::vector<Ingredient> triggerDefaults{
+			{ "Skyrim.esm|03AD5E", 1, B::kImpact },     // Fire Salts
+			{ "Skyrim.esm|033761", 1, B::kShortFuse },  // Paper Roll
+			{ "Skyrim.esm|033760", 1, B::kShortFuse },  // Charcoal
+			{ "Skyrim.esm|033761", 2, B::kLongFuse },   // Paper Roll
+			{ "Skyrim.esm|033760", 1, B::kLongFuse },   // Charcoal
+			{ "Skyrim.esm|034CD6", 1, B::kTripwire },   // Linen Wrap
+			{ "Skyrim.esm|03AD5E", 1, B::kTripwire },   // Fire Salts
+		};
+		for (int t = 0; t < Bombs::kTriggers; ++t) {
+			if (noneFor(triggerIngredients, t)) {
+				for (const auto& i : triggerDefaults) {
+					if (i.group == t) triggerIngredients.push_back(i);
+				}
 			}
 		}
-		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 1; })) {
-			fillings.push_back({ "Skyrim.esm|03AD5F", 1, 1 });  // Frost Salts
-			fillings.push_back({ "Skyrim.esm|03AD6A", 1, 1 });  // Ice Wraith Teeth
-		}
-		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 2; })) {
-			fillings.push_back({ "Skyrim.esm|033760", 1, 2 });  // Charcoal
-			fillings.push_back({ "Skyrim.esm|03F7F8", 2, 2 });  // Tundra Cotton
-		}
-		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 3; })) {
-			fillings.push_back({ "Skyrim.esm|03AD60", 1, 3 });  // Void Salts
-			fillings.push_back({ "Skyrim.esm|03AD73", 1, 3 });  // Glow Dust
-			fillings.push_back({ "Skyrim.esm|07EE01", 2, 3 });  // Glowing Mushroom
+		using P = Bombs::Payload;
+		const std::vector<Ingredient> fillingDefaults{
+			{ "HearthFires.esm|00300F", 1, P::kFrag },        // Nails
+			{ "HearthFires.esm|00306C", 1, P::kFrag },        // Quarried Stone
+			{ "Skyrim.esm|067181", 1, P::kFrag },             // Soul Gem Fragment (all five)
+			{ "Skyrim.esm|067182", 1, P::kFrag },
+			{ "Skyrim.esm|067183", 1, P::kFrag },
+			{ "Skyrim.esm|067184", 1, P::kFrag },
+			{ "Skyrim.esm|067185", 1, P::kFrag },
+			{ "Skyrim.esm|03AD5E", 1, P::kFire },             // Fire Salts
+			{ "Skyrim.esm|052695", 2, P::kFire },             // Charred Skeever Hide
+			{ "Dragonborn.esm|01CD74", 2, P::kFire },         // Ash Creep Cluster
+			{ "Dragonborn.esm|01CD6E", 2, P::kFire },         // Burnt Spriggan Wood
+			{ "Dragonborn.esm|016E26", 2, P::kFire },         // Spawn Ash
+			{ "Skyrim.esm|0F11C0", 1, P::kOil },              // Dwarven Oil
+			{ "Skyrim.esm|03AD72", 1, P::kOil },              // Troll Fat
+			{ "Dragonborn.esm|01CD71", 2, P::kOil },          // Ash Hopper Jelly
+			{ "Skyrim.esm|033760", 1, P::kSmoke },            // Charcoal
+			{ "Skyrim.esm|03F7F8", 2, P::kSmoke },            // Tundra Cotton
+			{ "Skyrim.esm|03AD63", 1, P::kFear },             // Ectoplasm
+			{ "Skyrim.esm|03AD73", 1, P::kFear },             // Glow Dust
+			{ "Skyrim.esm|02F44C", 2, P::kFear },             // Nightshade
+			{ "Skyrim.esm|0516C8", 2, P::kFear },             // Deathbell
+			{ "Skyrim.esm|03AD66", 1, P::kFrenzy },           // Hagraven Feathers
+			{ "Skyrim.esm|03AD5D", 1, P::kFrenzy },           // Falmer Ear
+			{ "Skyrim.esm|06BC10", 2, P::kFrenzy },           // Powdered Mammoth Tusk
+			{ "Skyrim.esm|03AD60", 1, P::kConcussion },       // Void Salts
+			{ "Skyrim.esm|03AD61", 1, P::kConcussion },       // Briar Heart
+			{ "Skyrim.esm|034CDD", 2, P::kConcussion },       // Bone Meal
+		};
+		for (int p = 0; p < Bombs::kPayloads; ++p) {
+			if (noneFor(fillings, p)) {
+				for (const auto& i : fillingDefaults) {
+					if (i.group == p) fillings.push_back(i);
+				}
+			}
 		}
 		if (loot.empty()) {
+			using S = Bombs::Strength;
+			auto L = [](const char* a_list, int t, int p, int s, int level, int count) {
+				return Loot{ a_list, Bombs::Index(t, p, s), level, count };
+			};
 			loot = {
-				{ "Skyrim.esm|09AF0A", 0, 1, 3 },   // general goods merchants
-				{ "Skyrim.esm|09AF0A", 1, 10, 2 },
-				{ "Skyrim.esm|09AF13", 0, 1, 2 },   // apothecaries
-				{ "Skyrim.esm|09AF13", 1, 1, 2 },
-				{ "Skyrim.esm|105240", 1, 1, 2 },   // court wizards' scroll stock
-				{ "Skyrim.esm|10E0DD", 0, 1, 1 },   // bandit random loot
-				{ "Skyrim.esm|10FAB6", 0, 1, 1 },   // Forsworn random loot
-				{ "Skyrim.esm|09AF0A", 2, 5, 2 },   // smoke: general goods
-				{ "Skyrim.esm|10E0DD", 2, 5, 1 },   // smoke: bandits
-				{ "Skyrim.esm|09AF13", 3, 10, 1 },  // thunder: apothecaries
-				{ "Skyrim.esm|105240", 3, 10, 1 },  // thunder: court wizards
+				// general goods merchants
+				L("Skyrim.esm|09AF0A", B::kImpact, P::kFire, S::kMild, 1, 3),
+				L("Skyrim.esm|09AF0A", B::kShortFuse, P::kFrag, S::kMild, 1, 2),
+				L("Skyrim.esm|09AF0A", B::kImpact, P::kOil, S::kMild, 1, 2),
+				L("Skyrim.esm|09AF0A", B::kImpact, P::kSmoke, S::kMild, 5, 2),
+				L("Skyrim.esm|09AF0A", B::kTripwire, P::kFrag, S::kModerate, 10, 1),
+				// apothecaries
+				L("Skyrim.esm|09AF13", B::kImpact, P::kFire, S::kMild, 1, 2),
+				L("Skyrim.esm|09AF13", B::kImpact, P::kFear, S::kMild, 5, 1),
+				L("Skyrim.esm|09AF13", B::kImpact, P::kFrenzy, S::kMild, 10, 1),
+				// court wizards' scroll stock
+				L("Skyrim.esm|105240", B::kImpact, P::kConcussion, S::kModerate, 10, 1),
+				L("Skyrim.esm|105240", B::kImpact, P::kFear, S::kModerate, 15, 1),
+				// bandit and Forsworn random loot
+				L("Skyrim.esm|10E0DD", B::kImpact, P::kFire, S::kMild, 1, 1),
+				L("Skyrim.esm|10E0DD", B::kShortFuse, P::kFrag, S::kMild, 5, 1),
+				L("Skyrim.esm|10E0DD", B::kImpact, P::kSmoke, S::kMild, 5, 1),
+				L("Skyrim.esm|10FAB6", B::kImpact, P::kFire, S::kMild, 1, 1),
+				L("Skyrim.esm|10FAB6", B::kTripwire, P::kFrag, S::kMild, 5, 1),
 			};
 		}
-		logger::info("Crafting: key {}, {} containers, {} fillings, in combat: {}", craftKey, containers.size(), fillings.size(), craftInCombat);
+	}
+}
 
+namespace Config
+{
+	void Load()
+	{
+		containers.clear();
+		triggerIngredients.clear();
+		fillings.clear();
+		bottles.clear();
+		loot.clear();
+		if (!ReadIni(kMainIni)) {
+			logger::warn("{} not found, using defaults", kMainIni.string());
+		}
+		// Values changed in the MCM override the main INI.
+		if (ReadIni(kMcmUserIni)) {
+			logger::info("Applied MCM settings from {}", kMcmUserIni.string());
+		}
+		Defaults();
 		if (maxSpeed < minSpeed) {
 			std::swap(minSpeed, maxSpeed);
 		}
-		logger::info("Cycle key {}", cycleKey);
-		logger::info("Throw key {}, speed {}-{} u/s over {}s, loft {} deg, node '{}'",
-			throwKey, minSpeed, maxSpeed, chargeSeconds, loftDegrees, throwNode);
-		logger::info("Preview: arc={} ring={} (r={}) gravity={} autoCalibrate={}",
-			showArc, showBlastRing, blastRadius, gravityUnits > 0.0f ? std::to_string(gravityUnits) : "learn on first throw"s, autoCalibrate);
+		logger::info("Keys: throw {}, cycle {}, craft {}, reload {}", throwKey, cycleKey, craftKey, reloadConfigKey);
+		logger::info("Throw: {}-{} u/s over {}s, loft {} deg, tripwire reach {}", minSpeed, maxSpeed, chargeSeconds, loftDegrees, placeReach);
+		logger::info("Preview: arc={} ring={} meter={} gravity={} autoCalibrate={}", showArc, showBlastRing, showChargeMeter,
+			gravityUnits > 0.0f ? std::to_string(gravityUnits) : "learn on first throw"s, autoCalibrate);
+		logger::info("Crafting: {} containers, {} trigger ingredients, {} fillings, in combat: {}", containers.size(),
+			triggerIngredients.size(), fillings.size(), craftInCombat);
 	}
 }

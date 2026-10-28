@@ -1,22 +1,20 @@
 #pragma once
 // FirePots.esp forms, looked up once at kDataLoaded, plus the vanilla visuals copied onto them.
 
+#include "Bombs.h"
+
 namespace Forms
 {
 	inline constexpr std::string_view kPlugin = "FirePots.esp";
 
-	// One throwable kind (tools/MakePlugin/Program.cs): the item is a scroll at itemId; the
-	// projectile and explosion are at baseId + 1 and + 2.
+	// One bomb (trigger x payload x strength), Bombs::Index order.
 	struct PotType
 	{
-		const char*        name;    // "Fire Pot"
-		RE::FormID         itemId;  // local ID of the scroll item
-		RE::FormID         baseId;
-		const std::string* potModel;        // INI setting: model source for item + flying pot
-		const std::string* explosionModel;  // INI setting: model source for the burst
-		RE::FormID         hazardId = 0;              // own lingering hazard (smoke cloud), 0 = none
-		const std::string* hazardModel = nullptr;     // INI setting: model source for that hazard
-		int                color = 0;                 // arc colour: 0 fire, 1 frost, 2 smoke, 3 thunder
+		int                index = 0;
+		int                trigger = 0;
+		int                payload = 0;
+		int                strength = 0;
+		std::string        name;  // the item's in-game name
 
 		RE::ScrollItem*    item = nullptr;
 		RE::BGSProjectile* projectile = nullptr;
@@ -25,8 +23,10 @@ namespace Forms
 		[[nodiscard]] bool Ready() const { return item && projectile && explosion; }
 	};
 
-	// Fire, Frost, Smoke, Thunder. Index order is the cycling order.
+	// All 84 bombs, Bombs::Index order.
 	std::vector<PotType>& Types();
+
+	inline RE::BGSProjectile* oilFireProjectile = nullptr;
 
 	// "Skyrim.esm|0B9BD2" -> that form, or nullptr (logged).
 	RE::TESForm* Lookup(const std::string& a_ref);

@@ -45,7 +45,7 @@ namespace LeveledLists
 		const auto& types = Forms::Types();
 		int         added = 0;
 		for (const auto& loot : Config::loot) {
-			if (loot.type < 0 || static_cast<std::size_t>(loot.type) >= types.size() || !types[loot.type].Ready()) {
+			if (loot.bomb < 0 || static_cast<std::size_t>(loot.bomb) >= types.size() || !types[loot.bomb].Ready()) {
 				continue;
 			}
 			auto* form = Forms::Lookup(loot.list);
@@ -54,9 +54,9 @@ namespace LeveledLists
 				logger::warn("Leveled lists: {} is not a leveled item list", loot.list);
 				continue;
 			}
-			if (AddEntry(list, types[loot.type].item, static_cast<std::uint16_t>(loot.level), static_cast<std::uint16_t>(loot.count))) {
+			if (AddEntry(list, types[loot.bomb].item, static_cast<std::uint16_t>(loot.level), static_cast<std::uint16_t>(loot.count))) {
 				++added;
-				logger::info("Leveled lists: {} x{} (level {}) -> {} [{:08X}]", types[loot.type].name, loot.count,
+				logger::info("Leveled lists: {} x{} (level {}) -> {} [{:08X}]", types[loot.bomb].name, loot.count,
 					loot.level, list->GetFormEditorID(), list->GetFormID());
 			}
 		}

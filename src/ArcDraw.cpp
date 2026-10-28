@@ -52,19 +52,21 @@ namespace ArcDraw
 
 		// Arc: bright near the hand, slightly dimmer far away; if nothing is hit within the traced
 		// time it fades out to say "it's going further than this".
-		// arc and ring colours per pot (fire, frost, smoke, thunder); the meter's full colour after them
-		static constexpr int kArc[4][3] = { { 255, 170, 60 }, { 130, 200, 255 }, { 200, 200, 200 }, { 255, 240, 120 } };
-		static constexpr int kRing[4][3] = { { 255, 110, 30 }, { 90, 170, 255 }, { 160, 160, 160 }, { 255, 220, 60 } };
-		const int c = std::clamp(f.color, 0, 3);
+		// arc and ring colours per payload: frag, fire, oil, smoke, fear, frenzy, concussion
+		static constexpr int kArc[7][3] = { { 210, 190, 160 }, { 255, 170, 60 }, { 200, 150, 60 }, { 200, 200, 200 },
+			{ 255, 245, 170 }, { 230, 90, 140 }, { 150, 210, 255 } };
+		static constexpr int kRing[7][3] = { { 180, 150, 110 }, { 255, 110, 30 }, { 170, 110, 30 }, { 160, 160, 160 },
+			{ 255, 230, 90 }, { 200, 50, 110 }, { 90, 170, 255 } };
+		const int c = std::clamp(f.color, 0, 6);
 		const int ar = kArc[c][0], ag = kArc[c][1], ab = kArc[c][2];
-		Polyline(dl, f.path, w, h, s.thickness, ar, ag, ab, [&](std::size_t i, std::size_t n) {
+		if (s.showArc) Polyline(dl, f.path, w, h, s.thickness, ar, ag, ab, [&](std::size_t i, std::size_t n) {
 			const float t = static_cast<float>(i) / static_cast<float>((std::max)(n - 1, std::size_t{ 1 }));
 			const float fade = f.landed ? 1.0f - 0.35f * t : 1.0f - t;
 			return o * fade;
 		});
 
 		// Blast ring
-		if (f.landed && s.showRing && f.ring.size() > 2) {
+		if (s.showArc && f.landed && s.showRing && f.ring.size() > 2) {
 			// red when it hits someone directly; otherwise the pot's colour
 			const int rr = f.hitsActor ? 255 : kRing[c][0];
 			const int g = f.hitsActor ? 60 : kRing[c][1];

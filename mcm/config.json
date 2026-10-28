@@ -1,0 +1,253 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Exit-9B/MCM-Helper/main/docs/config.schema.json",
+  "modName": "FirePots",
+  "displayName": "Fire Pots",
+  "cursorFillMode": "topToBottom",
+  "pages": [
+    {
+      "pageDisplayName": "Controls",
+      "content": [
+        {
+          "text": "Keys",
+          "type": "header"
+        },
+        {
+          "id": "iThrowKey:Throw",
+          "text": "Throw / place (hold)",
+          "help": "Hold to wind up, release to throw (default G). A tripwire is set down on the ground under the crosshair instead. With a bomb equipped in a hand, that hand's attack button does the same.",
+          "type": "keymap",
+          "valueOptions": {
+            "sourceType": "ModSettingInt"
+          },
+          "ignoreConflicts": true
+        },
+        {
+          "id": "iCycleKey:Throw",
+          "text": "Next bomb",
+          "help": "Switch to the next kind of bomb you carry (default V). Swaps the bomb in your hand if you hold one.",
+          "type": "keymap",
+          "valueOptions": {
+            "sourceType": "ModSettingInt"
+          },
+          "ignoreConflicts": true
+        },
+        {
+          "id": "iCraftKey:Crafting",
+          "text": "Make bombs",
+          "help": "Open the bomb-making menu anywhere (default H).",
+          "type": "keymap",
+          "valueOptions": {
+            "sourceType": "ModSettingInt"
+          },
+          "ignoreConflicts": true
+        },
+        {
+          "text": "Throwing",
+          "type": "header"
+        },
+        {
+          "id": "fMinSpeed:Throw",
+          "text": "Softest throw",
+          "help": "Launch speed of a quick toss, in game units per second (70 units = 1 m).",
+          "type": "slider",
+          "valueOptions": {
+            "min": 100,
+            "max": 800,
+            "step": 25,
+            "formatString": "{0}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fMaxSpeed:Throw",
+          "text": "Hardest throw",
+          "help": "Launch speed at full wind-up. 650 lands about 12 m away on flat ground.",
+          "type": "slider",
+          "valueOptions": {
+            "min": 200,
+            "max": 1500,
+            "step": 25,
+            "formatString": "{0}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fChargeSeconds:Throw",
+          "text": "Wind-up time",
+          "help": "Seconds of holding to reach the hardest throw.",
+          "type": "slider",
+          "valueOptions": {
+            "min": 0.2,
+            "max": 3.0,
+            "step": 0.1,
+            "formatString": "{1} s",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fLoftDegrees:Throw",
+          "text": "Loft",
+          "help": "Extra upward angle over the crosshair, in degrees.",
+          "type": "slider",
+          "valueOptions": {
+            "min": 0,
+            "max": 40,
+            "step": 1,
+            "formatString": "{0} deg",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fPlaceReach:Throw",
+          "text": "Tripwire reach",
+          "help": "How far ahead a tripwire can be set down.",
+          "type": "slider",
+          "valueOptions": {
+            "min": 50,
+            "max": 600,
+            "step": 10,
+            "formatString": "{0}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "bCancelOnBlock:Throw",
+          "text": "Block cancels",
+          "help": "Pressing block during a wind-up with the throw key cancels it without using a bomb.",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Display",
+      "content": [
+        {
+          "text": "While winding up",
+          "type": "header"
+        },
+        {
+          "id": "bShowArc:Preview",
+          "text": "Show throw preview",
+          "help": "Draw the flight arc and a ring where the bomb will land (or where a tripwire will sit). Off by default.",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "bShowBlastRing:Preview",
+          "text": "Show blast ring",
+          "help": "With the preview on: the blast radius where it lands (red when it will hit someone directly).",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "bShowChargeMeter:Preview",
+          "text": "Show wind-up meter",
+          "help": "A small meter under the crosshair with the bomb's name and how many you carry.",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "fArcOpacity:Preview",
+          "text": "Opacity",
+          "help": "How solid the preview and meter are.",
+          "type": "slider",
+          "valueOptions": {
+            "min": 0.1,
+            "max": 1.0,
+            "step": 0.05,
+            "formatString": "{2}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fArcThickness:Preview",
+          "text": "Line thickness",
+          "help": "Width of the arc and rings, in pixels.",
+          "type": "slider",
+          "valueOptions": {
+            "min": 1,
+            "max": 10,
+            "step": 0.5,
+            "formatString": "{1}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "text": "Messages",
+          "type": "header"
+        },
+        {
+          "id": "bShowNotification:Messages",
+          "text": "Notifications",
+          "help": "Short messages in the top-left corner (\"You have no bombs.\", what you made).",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "id": "bPrintToConsole:Messages",
+          "text": "Console log",
+          "help": "Also print throws and crafting to the console (~).",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        }
+      ]
+    },
+    {
+      "pageDisplayName": "Gameplay",
+      "content": [
+        {
+          "text": "Making bombs",
+          "type": "header"
+        },
+        {
+          "id": "bCraftInCombat:Crafting",
+          "text": "Allow in combat",
+          "help": "Let the bomb-making menu open while you're in combat.",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Empty bottles",
+          "type": "header"
+        },
+        {
+          "id": "bReturnEmptyBottles:Bottles",
+          "text": "Wine gives its bottle back",
+          "help": "Drinking wine gives you its empty bottle (bombs need an empty container). Turn off if another mod already does this.",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Loot",
+          "type": "header"
+        },
+        {
+          "id": "bAddToLeveledLists:Loot",
+          "text": "Merchants and loot",
+          "help": "Merchants stock bombs and bandits/Forsworn carry them. Applies the next time you start the game.",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        }
+      ]
+    }
+  ]
+}

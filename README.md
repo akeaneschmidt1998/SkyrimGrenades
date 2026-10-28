@@ -1,110 +1,68 @@
 # Fire Pots
 
-Throwable fire, frost, smoke and thunder pots for Skyrim SE/AE (SKSE plugin, CommonLibSSE-NG).
-Wind up a throw, see exactly where it will land, and set the ground on fire.
+Craftable bombs for Skyrim SE/AE (SKSE plugin, CommonLibSSE-NG). Pick a trigger, a payload and a
+strength; throw them with a wind-up, or set tripwires.
 
-**Controls**
-- **Pots are scrolls.** They sit in the Scrolls tab, can be bought, sold, stashed and found as loot,
-  and can be favorited and **equipped to a hand** like any scroll (Favorites + number keys swap
-  between them).
-- **With a pot in a hand, hold that hand's attack button** to wind up and **release** to throw.
-  The hand comes up like readying a spell and the throw uses its release motion: the scroll is
-  really cast, but its spell does nothing and fires nothing; the pot you see flying is the mod's,
-  launched the moment the cast goes off, with your wind-up speed.
-- **Or hold G** to wind up and release to throw, with nothing equipped (uses the kind picked with
-  V) or with a pot in hand (throws that one).
-- While winding up, an arc shows the flight, a ring shows the blast radius where it lands (red when
-  it will hit someone directly), and a meter under the crosshair shows the wind-up and how many
-  pots you have. 1 s to full; a full throw lands about 20 m away on flat ground.
-- **Tap** (or press block during a G wind-up) to cancel without using a pot.
-- **Press V** to switch pot kind (swaps the pot in your hand if you're holding one).
-- **Press H** to make pots (see below).
+## Bombs
 
-![Arc preview](docs/arc_preview.png)
+A bomb is **trigger × payload × strength**, and every combination is its own item
+("Moderate Fire Bomb (Short Fuse)"): 4 × 7 × 3 = 84 kinds.
 
-The preview is the real drawing code (`ArcDraw.cpp`) run over arcs traced by the real arc math
-(`Ballistics.h`) in a test scene (`arc_preview` target), not a mockup.
-
-**What a pot does:** it flies as a real projectile on a ballistic arc and shatters on the first
-thing it touches.
-- **Fire Pot:** pottery-break and ignite sounds, a fire burst (30 fire damage in a 160-unit radius,
-  resist fire applies, plus a small knock), a scorch mark and a patch of burning ground (vanilla's
-  small long-burning fire hazard).
-- **Frost Pot:** the same shatter with a frost burst (30 frost damage, which also drains stamina
-  like frost spells) and a frost decal. No lingering patch.
-- **Smoke Pot:** a dust burst and a cloud that lingers 20 s (250-unit radius). Anyone inside is
-  invisible, refreshed every second while they stay in; like vanilla invisibility it ends the
-  moment they attack or cast. Silent to AI.
-- **Thunder Pot:** a lightning burst, a thunderclap and a white flash that blinds anyone within 700
-  units who's looking at it (you too). Everyone up to level 25 in the blast flees for 10 s. Loud:
-  AI nearby hears it.
-
-## Making pots
-
-**Press H anywhere** (outside menus and dialogue) to make pots. A few short menus:
-
-1. **Choose the pot**: Fire Pot or Frost Pot, with how many you could make right now.
-2. **Choose a container**: every container, with how many you carry (the ones you have first).
-3. **Choose a filling**: only the fillings for that pot, with how many you carry,
-   e.g. `Fire Salts (4)` or `Charred Skeever Hide x2 (5)`.
-4. **How many**: 1, 5 or All (skipped when you can only make one). If you can't make any, it
-   says what one takes and what you're missing.
-
-It always opens, even with nothing usable, so it's also the list of what pots can be made from.
-
-**Empty bottles come back when you drink wine.** Each wine gives its matching empty bottle, and
-modded drinks that use a vanilla wine bottle model are matched automatically. Mead, ale and
-spirits give nothing (vanilla has no empty bottles for them). If you already use a bottle-return mod, set
-`bReturnEmptyBottles = 0` so you don't get two.
-
-Each menu has Back and Cancel, and long lists page after 8 entries. There are no recipes at the
-cooking pot.
-
-Containers (any one): empty wine bottles (the four vanilla ones, the spiced wine bottle,
-Dawnguard's two), clay and Nordic jugs, glazed jug, glazed and Nordic pots.
-
-| Pot | Fillings (how many per pot) |
-|---|---|
-| Fire | Fire Salts, Dwarven Oil, Troll Fat (1); Charred Skeever Hide, Spriggan Sap (2); Ash Creep Cluster, Ash Hopper Jelly, Burnt Spriggan Wood, Spawn Ash (2, Dragonborn) |
-| Frost | Frost Salts, Ice Wraith Teeth (1) |
-| Smoke | Charcoal (1), Tundra Cotton (2) |
-| Thunder | Void Salts, Glow Dust (1); Glowing Mushroom (2) |
-
-Both lists live in `FirePots.ini` (`[Containers]`, `[Fillings]`), so adding a modded bottle or a
-new filling is one line.
-
-**Where else they come from:** general goods merchants stock Fire, Frost (level 10+) and Smoke
-(level 5+); apothecaries stock Fire, Frost and Thunder (level 10+); court wizards stock Frost and
-Thunder; bandits carry Fire and Smoke, Forsworn Fire (all set in `[Loot]`).
-
-For testing: `help "fire pot" 4` (or `"frost pot"`) in the console gives the ID, then
-`player.additem <id> 10`.
-
-## How it fits together
-
-| Piece | Where | How |
+| Trigger | What it does | Made with (per mild bomb) |
 |---|---|---|
-| Pot items | `FirePots.esp` (`FP_FirePot`, `FP_FrostPot`) | Scrolls (either hand), 1 lb; a do-nothing script effect with a 300 s charge so vanilla never casts them |
-| Loot | `src/LeveledLists.cpp` | Adds the pots to vanilla merchant and bandit/Forsworn leveled lists at load (`[Loot]` in the INI) |
-| Pot-making menu | `src/Crafting.cpp` | Craft key → native message boxes: container → filling → amount; lists from the INI |
-| Bottle return | `src/BottleReturn.cpp` | Equip (= drink) event on the player → adds the drink's empty bottle |
-| Flight | `FP_FirePotProjectile` | Missile with gravity that explodes on contact; launched by the DLL from the throwing hand with the wind-up speed |
-| Shatter + fire | `FP_FirePotExplosion` | Sounds, scorch decal, fire-damage burst (`FP_FirePotBurstEnch`), places vanilla `FireSmLongHazard` |
-| Shatter + frost | `FP_FrostPotExplosion` | Sounds, frost decal, frost-damage burst (`FP_FrostPotBurstEnch`) |
-| Wind-up, arc, launch | `src/Thrower.cpp` | Throw key input, per-frame update on the player, havok raycasts along the arc, `Projectile::Launch` |
-| Arc math | `src/Ballistics.h` | Charge → speed, loft, angles, arc tracing, gravity fit (unit-tested) |
-| Overlay | `src/ArcDraw.cpp`, `src/OverlayD3D.cpp` | ImGui on the swap chain's Present, same approach as DaggerfallCombat (they run side by side) |
-| Models | `src/Forms.cpp` | Borrowed from vanilla at load (fire: GlazedPot01 + the falling oil-lamp trap's explosion; frost: small clay jug + the frost rune's explosion); `[Visuals]` in the INI swaps in a custom mesh |
+| Impact (thrown) | bursts on contact | 1 Fire Salts |
+| Short fuse (thrown) | bounces and rolls, bursts after 1.5 s | 1 Paper Roll, 1 Charcoal |
+| Long fuse (thrown) | bursts after 4 s | 2 Paper Roll, 1 Charcoal |
+| Tripwire (placed) | set down on the ground ahead of you; bursts when someone comes within ~1.7 m | 1 Linen Wrap, 1 Fire Salts |
 
-**The arc learns the engine.** The preview starts from real-world gravity. On your first throw the
-plugin follows the pot for half a second, fits its real gravity and launch speed, and corrects the
-preview (and the launch speed) to match. The log shows it as `Flight check: ...`; put the measured
-gravity in `fGravityUnits` to skip the learning.
+| Payload | What it does | Filling (any one, per mild bomb) |
+|---|---|---|
+| Frag | shrapnel: physical damage and a shove | Nails, Quarried Stone (Hearthfire) or a Soul Gem Fragment |
+| Fire | fire damage and burning ground | Fire Salts; or 2 Charred Skeever Hide / Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
+| Oil | a slick (60 s) that slows anyone in it; a fire bomb bursting in it sets it ablaze | Dwarven Oil, Troll Fat; or 2 Ash Hopper Jelly |
+| Smoke | a lingering cloud: anyone inside is invisible (ends when they attack), loses stamina and gets no stamina regen | Charcoal; or 2 Tundra Cotton |
+| Fear | a blinding flash; everyone up to level 10/20/30 flees | Ectoplasm, Glow Dust; or 2 Nightshade / Deathbell |
+| Frenzy | everyone up to level 10/20/30 attacks whoever is nearest | Hagraven Feathers, Falmer Ear; or 2 Powdered Mammoth Tusk |
+| Concussion | wide stagger (1.75× the radius), very loud | Void Salts, Briar Heart; or 2 Bone Meal |
+
+| Strength | Ingredients | Effect |
+|---|---|---|
+| Mild | as listed | 2 m blast |
+| Moderate | 2× everything (not the container) | 3 m blast, double damage, longer effects |
+| Major | 3× | 4 m blast, triple damage, longest effects |
+
+Every bomb also takes **one empty container**: any empty wine bottle, clay or Nordic jug, glazed or
+Nordic pot. It's picked for you. **Drinking wine gives its empty bottle back.**
+
+**Getting bombs:** make them anywhere with **H**, or buy them: general goods merchants (fire, frag,
+oil, smoke, tripwires), apothecaries (fire, fear, frenzy), court wizards (concussion, fear). Bandits
+and Forsworn carry a few. All in `[Loot]`.
+
+## Controls
+
+- **H**: make bombs, anywhere: *what kind* (each shows what it takes) → *payload* (with how many
+  you could make) → *filling* (only if you carry more than one) → *strength* (with what each takes)
+  → *how many*. It always opens, so it's also the recipe book.
+- **Bombs are scrolls**: Scrolls tab; buy, sell, stash, favorite and **equip to a hand**. With a
+  bomb in a hand, **hold that hand's attack button** to wind up (the hand comes up like readying a
+  spell) and **release** to throw (the spell-release motion). A tripwire is set down instead.
+- **G**: hold to wind up, release to throw, without equipping anything (no hand animation).
+- **V**: next kind of bomb you carry (swaps the one in your hand, if any).
+- Throws are soft: a full wind-up lands about 12 m away on flat ground.
+- **Throw preview** (arc + landing ring, or a tripwire's trigger ring) is **off by default**; turn it
+  on in the MCM. The small wind-up meter shows either way.
+
+## Settings (MCM)
+
+*Mod Configuration → Fire Pots* (SkyUI + MCM Helper): keys, throw speeds, wind-up time, loft,
+tripwire reach, the preview, messages, crafting in combat, bottle return, merchants and loot.
+Changes apply when you close the menu (merchants/loot on the next game start). Everything else
+(ingredient lists, loot lists, models) is in `SKSE/Plugins/FirePots.ini`.
 
 ## Getting a build without compiling
 
 Every push builds on GitHub (Actions tab → latest **Build** run → *Artifacts*). Download
-**FirePots-mod**: it contains `FirePots.esp` and `SKSE/Plugins/FirePots.dll` + `FirePots.ini`, so
+**FirePots-mod**: it contains `FirePots.esp`, `Scripts/`, `MCM/` and `SKSE/Plugins/` (DLL + INI), so
 install it directly in MO2 / Vortex. **FirePots-pdb** has debug symbols for crash logs.
 
 ## Requirements
@@ -112,6 +70,8 @@ install it directly in MO2 / Vortex. **FirePots-pdb** has debug symbols for cras
 - **SKSE** and **Address Library for SKSE Plugins** for your game version (Steam 1.7.104: SKSE
   2.3.1+, Address Library *All in One* v13+).
 - `FirePots.esp` is ESL-flagged (takes no load order slot); its only master is Skyrim.esm.
+- For the menu: **SkyUI** and **MCM Helper**. Without them everything works; you edit the INI instead.
+- HearthFire's Nails and Quarried Stone are frag fillings; every SE/AE copy has HearthFire.
 - Skyrim VR is not supported.
 
 ## Build (Windows)
@@ -138,67 +98,41 @@ build\release\arc_preview.exe .
 
 ## Test checklist
 
-Each step adds one thing. Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
+Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 
-**A. It loads**
-1. Log shows `FirePots loaded`, `Hooked PlayerCharacter::Update`, `Input listener registered`,
-   `Forms ready: ...`, `Pot model: '...'` with a real mesh path and `Overlay: arc preview installed`.
-
-**B. Wind-up and arc**
-2. With no pots, press G: "You have no Fire Pots or Frost Pots."
-   With nothing, press H: the menu still opens; pick Fire Pot, then a container (all at (0)), and
-   only fire fillings are listed; pick one and it says what a pot takes. With an empty wine bottle
-   and 3 Fire Salts: Fire Pot (can make 1), the bottle, the salts: one Fire Pot, one bottle and one
-   salt gone. No container shows up as a hex number.
-   Drink a wine: an Empty Wine Bottle appears (the log lists every drink -> bottle pair).
-3. Add 10 pots. Hold G: the meter fills over about a second and an arc leaves your left hand.
-   Look around while holding: the arc and ring follow. Aim at a wall: the ring stands up on it.
-   Aim at an NPC: the ring turns red when the arc ends on them.
-4. Tap G quickly: "Hold the throw key to wind up..." and no pot is used. Hold G and press block:
-   "Throw cancelled", no pot used.
-4b. Equip a Fire Pot to your left hand (Favorites). Hold right-click: the arc appears from the
-   left hand; release: it's thrown and one pot is used. The vanilla scroll never casts.
-5. Add a few Frost Pots and press V: "Frost Pot (n)", and the arc turns blue. Throw them all; the
-   next G switches back to Fire Pots by itself.
-
-**C. The throw**
-6. Release G after a full wind-up: the pot flies along the arc and shatters where the ring was,
-   with sound, a flash of fire and a burning patch. One pot is gone.
-7. Console/log shows `Threw a Fire Pot: ...` and, a moment later, `Flight check: gravity ...` and
-   `Calibrated the arc: ...`. From the second throw on, the pot should land on the ring exactly.
-8. Hit a bandit: fire damage and burning. Stand in the fire yourself: it hurts you too.
-9. First person and third person both work; throws are blocked while riding or swimming.
+1. Log shows `FirePots loaded`, `84 of 84 bombs ready`, `Leveled lists: 15 entries added`,
+   `Watching for MCM changes`. The MCM lists *Fire Pots* with three pages.
+2. Press H with nothing: the menu opens; *Thrown, impact* → *Fire* → *Fire Salts* → *Mild*: it
+   says what one takes (an empty container + 2 Fire Salts: one for the trigger, one for the filling).
+3. With an empty wine bottle, 4 Fire Salts: *impact* → *Fire (can make 2)* → *Mild (can make 2)*
+   → *1*: one "Mild Fire Bomb (Impact)", a bottle and 2 salts gone.
+4. Throw it with G: soft arc, bursts on contact, burning ground. With the preview on (MCM), the arc
+   and a ring show while winding up.
+5. A short-fuse frag bomb bounces and bursts ~1.5 s after landing.
+6. A tripwire (G, hold, release): it's set down a few steps ahead; a bandit walking over it sets it
+   off. (Check whether walking over your own sets it off, and tell me.)
+7. Oil then fire on the same spot: the slick slows; the fire bomb sets it ablaze (log: `Oil slick
+   ... ignited`).
+8. Smoke: standing in the cloud you're invisible, stamina drains and doesn't regenerate; attacking
+   ends the invisibility.
+9. Fear / frenzy on a group of bandits; concussion staggers everything in a wide ring and is loud.
+10. Equip a bomb to the left hand, hold right-click, release: the hand's release motion, the bomb
+    flies. V swaps the bomb in the hand.
 
 ## Known unknowns (only an in-game test can settle these)
 
-- **How far NPCs notice a pot.** The flight and the shatter are now "silent" to AI (the sounds still
-  play for you), so only what the blast actually hits should turn hostile. If enemies far away
-  still come running, the burning patch (a vanilla hazard) is the next suspect.
-- **Hand throws ride on a scroll cast.** Releasing casts the scroll (0.3 s charge, an invisible
-  do-nothing projectile); the mod launches the real pot when it sees the scroll used up. If a pot
-  is ever used up with nothing thrown, or thrown twice, the log says which.
-- **Animation.** The throw uses the vanilla spell-release motion for that hand. A real overhand
-  throw can replace it through Open Animation Replacer (only while a pot is in that hand) once
-  there's a clip to use: see *Next*.
-- **Smoke and thunder visuals** are borrowed (a dragon-landing dust burst, a gas cloud, a mass
-  shock burst); `[Visuals]` swaps them.
-
-- **Pitch sign of `Projectile::Launch`.** Assumed Skyrim's convention (positive = down). If it's the
-  other way the first throw goes the wrong way vertically; the flight check detects it, flips it and
-  logs a line. Please send me that log line if you see it.
-- **Missile gravity.** Measured on the first throw (see above); if the log says `not enough flight
-  to measure`, throw a longer one.
-- **The borrowed models.** The glazed pot may look big in flight (`fProjectileScale`), and if the
-  oil-lamp explosion's model turns out to be empty, set `sExplosionModel = Skyrim.esm|0439C0`
-  (FireBallExp01).
-- **No throw animation yet.** The pot just leaves the hand. Vanilla has no object-throw animation;
-  one can be made with the DaggerfallCombat hkx tools and played when the pot is released.
+- **Tripwires and the player.** They use the engine's proximity trigger (like runes); whether your
+  own steps set it off isn't known yet.
+- **Fuse bombs' preview** shows the first bounce, not where they roll to.
+- **Oil only ignites from fire bombs**, not fire spells, torches or enchanted weapons yet.
+- **Hand throws ride on a scroll cast** (0.3 s charge, an invisible do-nothing projectile); the
+  mod launches the real bomb when it sees the scroll used up.
+- **Borrowed visuals** (`[Visuals]`) may not all look right; the oil slick has no model of its own,
+  just a dark stain.
 
 ## Next
 
-- **Oil pots:** leave vanilla's oil puddle (`TrapOilHazard01`), ignited by any fire (spell, torch,
-  fire pot, enchanted weapon) via a small ignition watcher in the DLL.
-- **NPC grenadiers:** a keyword on some bandits / Forsworn; the DLL lets them throw with the same
-  projectile code at mid range, leading the player's movement, with a cooldown and a pot count.
-- **A proper model** (a small sealed clay pot) to replace the borrowed GlazedPot01.
-- MCM page for the INI settings.
+- A real overhand throw animation through Open Animation Replacer (needs your
+  `Skyrim - Animations.bsa`).
+- NPC bombers.
+- Fire spells and torches igniting oil.

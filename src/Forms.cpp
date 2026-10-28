@@ -47,54 +47,13 @@ namespace
 		return model->GetModel();
 	}
 
-	bool LoadType(RE::TESDataHandler* a_dh, Forms::PotType& a_type)
+	void SetModelFrom(RE::TESModel* a_target, const std::string& a_setting, const char* a_what, RE::TESForm** a_sourceOut = nullptr)
 	{
-		a_type.item = a_dh->LookupForm<RE::ScrollItem>(a_type.itemId, Forms::kPlugin);
-		a_type.projectile = a_dh->LookupForm<RE::BGSProjectile>(a_type.baseId + 1, Forms::kPlugin);
-		a_type.explosion = a_dh->LookupForm<RE::BGSExplosion>(a_type.baseId + 2, Forms::kPlugin);
-		if (!a_type.Ready()) {
-			logger::error("{}: {} forms missing (item {}, projectile {}, explosion {}); is it an old version?",
-				Forms::kPlugin, a_type.name, static_cast<void*>(a_type.item), static_cast<void*>(a_type.projectile),
-				static_cast<void*>(a_type.explosion));
-			return false;
+		const auto mesh = ResolveModel(a_setting, a_sourceOut);
+		if (a_target && !mesh.empty()) {
+			a_target->SetModel(mesh.c_str());
 		}
-
-		// Pot model: the inventory item and the flying projectile share it.
-		const auto potMesh = ResolveModel(*a_type.potModel);
-		if (!potMesh.empty()) {
-			a_type.item->SetModel(potMesh.c_str());
-			a_type.projectile->SetModel(potMesh.c_str());
-		}
-
-		// Burst model and light from a vanilla explosion.
-		RE::TESForm* explSource = nullptr;
-		const auto   burstMesh = ResolveModel(*a_type.explosionModel, &explSource);
-		if (!burstMesh.empty()) {
-			a_type.explosion->SetModel(burstMesh.c_str());
-		}
-		if (auto* vanilla = explSource ? explSource->As<RE::BGSExplosion>() : nullptr) {
-			if (!a_type.explosion->data.light) {
-				a_type.explosion->data.light = vanilla->data.light;
-			}
-		}
-
-		if (a_type.hazardId && a_type.hazardModel) {
-			if (auto* hazard = a_dh->LookupForm<RE::BGSHazard>(a_type.hazardId, Forms::kPlugin)) {
-				const auto mesh = ResolveModel(*a_type.hazardModel);
-				if (!mesh.empty()) {
-					hazard->SetModel(mesh.c_str());
-				}
-				logger::info("{} cloud model '{}' (from {})", a_type.name, mesh, *a_type.hazardModel);
-			}
-		}
-
-		logger::info("{} ready: item {:08X}, projectile {:08X}, explosion {:08X} (radius {}, placed {:08X}); "
-					 "pot model '{}' (from {}), burst model '{}' (from {})",
-			a_type.name, a_type.item->GetFormID(), a_type.projectile->GetFormID(), a_type.explosion->GetFormID(),
-			a_type.explosion->data.radius,
-			a_type.explosion->data.impactPlacedObject ? a_type.explosion->data.impactPlacedObject->GetFormID() : 0u,
-			potMesh, *a_type.potModel, burstMesh, *a_type.explosionModel);
-		return true;
+		logger::info("{} model '{}' (from {})", a_what, mesh, a_setting);
 	}
 }
 
@@ -104,12 +63,17 @@ namespace Forms
 
 	std::vector<PotType>& Types()
 	{
-		static std::vector<PotType> types{
-			PotType{ "Fire Pot", 0x820, 0x800, &Config::firePotModel, &Config::fireExplosionModel, 0, nullptr, 0 },
-			PotType{ "Frost Pot", 0x830, 0x810, &Config::frostPotModel, &Config::frostExplosionModel, 0, nullptr, 1 },
-			PotType{ "Smoke Pot", 0x858, 0x850, &Config::smokePotModel, &Config::smokeExplosionModel, 0x855, &Config::smokeCloudModel, 2 },
-			PotType{ "Thunder Pot", 0x868, 0x860, &Config::thunderPotModel, &Config::thunderExplosionModel, 0, nullptr, 3 },
-		};
+		static std::vector<PotType> types = [] {
+			std::vector<PotType> v(Bombs::kCount);
+			for (int i = 0; i < Bombs::kCount; ++i) {
+				v[i].index = i;
+				v[i].trigger = Bombs::TriggerOf(i);
+				v[i].payload = Bombs::PayloadOf(i);
+				v[i].strength = Bombs::StrengthOf(i);
+				v[i].name = Bombs::Name(i);
+			}
+			return v;
+		}();
 		return types;
 	}
 
@@ -125,10 +89,56 @@ namespace Forms
 			logger::error("{} is not loaded: enable it in your load order", kPlugin);
 			return false;
 		}
-		bool all = true;
+		int ready = 0;
 		for (auto& t : Types()) {
-			all = LoadType(dh, t) && all;
+			t.item = dh->LookupForm<RE::ScrollItem>(Bombs::ItemId(t.index), kPlugin);
+			t.projectile = dh->LookupForm<RE::BGSProjectile>(Bombs::ProjectileId(t.index), kPlugin);
+			t.explosion = dh->LookupForm<RE::BGSExplosion>(Bombs::ExplosionId(t.payload, t.strength), kPlugin);
+			if (!t.Ready()) {
+				logger::error("{}: {} is missing forms; is the plugin an old version?", kPlugin, t.name);
+				continue;
+			}
+			if (const char* n = t.item->GetName(); n && *n) {
+				t.name = n;
+			}
+			// item + flying bomb look like their trigger's container
+			const auto mesh = ResolveModel(Config::triggerModel[t.trigger]);
+			if (!mesh.empty()) {
+				t.item->SetModel(mesh.c_str());
+				t.projectile->SetModel(mesh.c_str());
+			}
+			++ready;
 		}
-		return all;
+
+		// explosions: one per payload x strength, shared by the triggers
+		for (int p = 0; p < Bombs::kPayloads; ++p) {
+			RE::TESForm* source = nullptr;
+			const auto   mesh = ResolveModel(Config::explosionModel[p], &source);
+			auto*        vanilla = source ? source->As<RE::BGSExplosion>() : nullptr;
+			for (int s = 0; s < Bombs::kStrengths; ++s) {
+				auto* e = dh->LookupForm<RE::BGSExplosion>(Bombs::ExplosionId(p, s), kPlugin);
+				if (!e) {
+					continue;
+				}
+				if (!mesh.empty()) {
+					e->SetModel(mesh.c_str());
+				}
+				if (vanilla && !e->data.light) {
+					e->data.light = vanilla->data.light;
+				}
+			}
+			logger::info("{} burst model '{}' (from {})", Bombs::kPayloadNames[p], mesh, Config::explosionModel[p]);
+		}
+		for (int s = 0; s < Bombs::kStrengths; ++s) {
+			if (auto* cloud = dh->LookupForm<RE::BGSHazard>(Bombs::SmokeCloudId(s), kPlugin)) {
+				SetModelFrom(cloud, Config::smokeCloudModel, "Smoke cloud");
+			}
+		}
+		oilFireProjectile = dh->LookupForm<RE::BGSProjectile>(Bombs::kOilFireProjectileId, kPlugin);
+		if (oilFireProjectile && oilFireProjectile->data.explosionType) {
+			SetModelFrom(oilFireProjectile->data.explosionType, Config::oilFireModel, "Burning oil");
+		}
+		logger::info("{} of {} bombs ready", ready, Bombs::kCount);
+		return ready == Bombs::kCount;
 	}
 }

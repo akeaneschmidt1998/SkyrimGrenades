@@ -47,7 +47,7 @@ namespace
 
 	void RenderArc()
 	{
-		if (!g_imguiReady || !Config::showArc) {
+		if (!g_imguiReady || (!Config::showArc && !Config::showChargeMeter)) {
 			return;
 		}
 		const auto frame = ArcState::Snapshot();
@@ -60,6 +60,7 @@ namespace
 		ImGui::NewFrame();
 
 		ArcDraw::Style style;
+		style.showArc = Config::showArc;
 		style.thickness = Config::arcThickness;
 		style.opacity = Config::arcOpacity;
 		style.showRing = Config::showBlastRing;

@@ -24,6 +24,18 @@ jobs:
       - name: Generate and verify FirePots.esp
         run: dotnet run --project tools/MakePlugin -c Release -- data-out
 
+      - name: Generate and verify the MCM script
+        run: |
+          mkdir -p data-out/Scripts
+          python3 tools/pex.py write FirePots_MCM MCM_ConfigBase data-out/Scripts/FirePots_MCM.pex
+          python3 tools/pex.py dump data-out/Scripts/FirePots_MCM.pex
+
+      - name: Add MCM Helper menu files
+        run: |
+          python3 -c "import json; json.load(open('mcm/config.json'))"
+          mkdir -p data-out/MCM/Config/FirePots
+          cp mcm/config.json mcm/settings.ini data-out/MCM/Config/FirePots/
+
       - name: Ballistics tests
         run: |
           g++ -std=c++20 -O2 -Wall -Wextra -Isrc tests/ballistics_test.cpp -o ballistics_test

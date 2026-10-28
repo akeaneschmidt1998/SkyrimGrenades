@@ -10,6 +10,7 @@ namespace ArcDraw
 {
 	struct Style
 	{
+		bool  showArc = true;  // arc + ring; the meter has its own switch
 		float thickness = 3.0f;
 		float opacity = 0.9f;
 		bool  showRing = true;

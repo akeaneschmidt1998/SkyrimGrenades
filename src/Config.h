@@ -1,7 +1,11 @@
 #pragma once
-// Settings from Data/SKSE/Plugins/FirePots.ini. Plain std only so the overlay TU can include it.
+// Settings from Data/SKSE/Plugins/FirePots.ini, overridden by what you set in the MCM
+// (Data/MCM/Settings/FirePots.ini, written by MCM Helper). Reloaded whenever the Journal menu
+// (where the MCM lives) closes. Plain std only so the overlay TU can include it.
 // Key codes (same as SkyUI MCM / SKSE): 1-255 = keyboard DirectX scan code,
 // 256 = left mouse, 257 = right mouse, 258 = middle mouse, 259 = mouse 4, 260 = mouse 5. 0 = unbound.
+
+#include "Bombs.h"
 
 #include <cstdint>
 #include <string>
@@ -11,31 +15,31 @@
 namespace Config
 {
 	// --- Throw ---
-	inline std::uint32_t throwKey = 34;       // G: hold to wind up, release to throw
-	inline std::uint32_t cycleKey = 47;       // V: switch pot type (fire / frost)
-	inline std::uint32_t craftKey = 35;       // H: open the pot-making menu
-	inline bool          craftInCombat = true;  // allow making pots while in combat
-	inline std::uint32_t reloadConfigKey = 0;  // re-read the INI in game
-	inline float         minSpeed = 400.0f;    // units/s at the shortest throw (~6 m/s)
-	inline float         maxSpeed = 950.0f;    // units/s at full wind-up (~13.5 m/s, ~20 m at 45 degrees)
-	inline float         chargeSeconds = 1.0f;  // time to full wind-up
-	inline float         loftDegrees = 12.0f;   // extra upward angle over the crosshair
-	inline float         minHoldMs = 150.0f;    // shorter taps cancel (no pot used)
-	inline float         cooldownMs = 600.0f;   // between throws
-	inline bool          cancelOnBlock = true;  // pressing block during the wind-up cancels it
-	inline std::string   throwNode = "NPC L Hand [LHnd]";       // where a left-hand / throw-key pot leaves from
-	inline std::string   throwNodeRight = "NPC R Hand [RHnd]";  // where a right-hand pot leaves from
-	inline float         projectileScale = 0.6f;  // size of the flying pot model
+	inline std::uint32_t throwKey = 34;          // G: hold to wind up, release to throw (or place)
+	inline std::uint32_t cycleKey = 47;          // V: next bomb you carry
+	inline std::uint32_t craftKey = 35;          // H: open the bomb-making menu
+	inline bool          craftInCombat = true;   // allow making bombs while in combat
+	inline std::uint32_t reloadConfigKey = 0;    // re-read the INI in game
+	inline float         minSpeed = 250.0f;      // units/s at the shortest throw (~3.5 m/s)
+	inline float         maxSpeed = 650.0f;      // units/s at full wind-up (~9 m/s, ~12 m at 45 degrees)
+	inline float         chargeSeconds = 1.0f;   // time to full wind-up
+	inline float         loftDegrees = 12.0f;    // extra upward angle over the crosshair
+	inline float         placeReach = 250.0f;    // how far ahead a tripwire can be set down
+	inline float         minHoldMs = 150.0f;     // shorter taps cancel (no bomb used)
+	inline float         cooldownMs = 600.0f;    // between throws
+	inline bool          cancelOnBlock = true;   // pressing block during a G wind-up cancels it
+	inline std::string   throwNode = "NPC L Hand [LHnd]";       // where a left-hand / throw-key bomb leaves from
+	inline std::string   throwNodeRight = "NPC R Hand [RHnd]";  // where a right-hand bomb leaves from
+	inline float         projectileScale = 0.6f;  // size of the flying bomb model
 
-	// --- Preview ---
-	inline bool  showArc = true;
+	// --- Preview (off by default) ---
+	inline bool  showArc = false;
 	inline float arcStep = 1.0f / 30.0f;  // seconds per traced segment
 	inline float arcMaxTime = 4.0f;       // seconds of flight traced at most
-	inline float blastRadius = 160.0f;    // ring drawn at the landing point (match the ESP)
 	inline bool  showBlastRing = true;
 	inline float arcThickness = 3.0f;
 	inline float arcOpacity = 0.9f;
-	inline bool  showChargeMeter = true;
+	inline bool  showChargeMeter = true;  // wind-up meter (shown even with the arc off)
 
 	// --- Calibration ---
 	// 0 = start from 9.81 m/s^2 and replace it with the engine's real value measured on the first
@@ -45,47 +49,51 @@ namespace Config
 	inline bool  calibrateSpeed = false;  // also correct the launch speed from the measurement
 
 	// --- Visuals: borrowed from vanilla forms at load ("Plugin.esm|HEXID", or a mesh path) ---
-	inline std::string firePotModel = "Skyrim.esm|0B9BD2";         // GlazedPot01: item + flying pot
-	inline std::string fireExplosionModel = "Skyrim.esm|070E5C";   // TrapOilLampExplosion01: fire burst + light
-	inline std::string frostPotModel = "Skyrim.esm|0B9BDE";        // GlazedJugSmall01
-	inline std::string frostExplosionModel = "Skyrim.esm|044089";  // ExplosionRuneFrost01: frost burst + light
-	inline std::string smokePotModel = "Skyrim.esm|0B9BD6";        // GlazedJugLarge01
-	inline std::string smokeExplosionModel = "Skyrim.esm|0D5100";  // FXDragonDustExplosion: a big dust cloud
-	inline std::string smokeCloudModel = "Skyrim.esm|106380";      // DA13PustuleGasCloud: the lingering cloud
-	inline std::string thunderPotModel = "Skyrim.esm|0F08F3";      // Nordic jug, small
-	inline std::string thunderExplosionModel = "Skyrim.esm|0D13E8";  // ExplosionShockMass01: lightning burst + light
-
-	// --- Crafting: what counts as a container / filling ("Plugin.esm|HEXID", fillings ", count") ---
-	// Repeatable INI keys (sContainer, sFireFilling, sFrostFilling) add entries; if the INI lists
-	// none of a kind, the built-in vanilla lists are used.
-	struct Filling
-	{
-		std::string form;
-		int         count = 1;  // how many make one pot
-		int         type = 0;   // 0 Fire, 1 Frost, 2 Smoke, 3 Thunder
+	inline std::string triggerModel[Bombs::kTriggers]{
+		"Skyrim.esm|0B9BD2",  // impact: glazed pot
+		"Skyrim.esm|0B9BDE",  // short fuse: small clay jug
+		"Skyrim.esm|0B9BD6",  // long fuse: large clay jug
+		"Skyrim.esm|0F08F6",  // tripwire: Nordic pot
 	};
-	inline std::vector<std::string> containers;
-	inline std::vector<Filling>     fillings;
+	inline std::string explosionModel[Bombs::kPayloads]{
+		"Skyrim.esm|088109",  // frag: FallingDustExplosion01
+		"Skyrim.esm|070E5C",  // fire: TrapOilLampExplosion01
+		"Skyrim.esm|01A13C",  // oil: FXdustDropSmExplosion (a splash)
+		"Skyrim.esm|0D5100",  // smoke: FXDragonDustExplosion
+		"Skyrim.esm|0D13E8",  // fear: ExplosionShockMass01 (flash)
+		"Skyrim.esm|0665BB",  // frenzy: ExplosionRuneShock01
+		"Skyrim.esm|0FDBBA",  // concussion: TG08BShockwaveExplosion
+	};
+	inline std::string smokeCloudModel = "Skyrim.esm|106380";      // DA13PustuleGasCloud
+	inline std::string oilFireModel = "Skyrim.esm|109E74";         // TrapOilExplosionInitial
 
-	// --- Bottle return: drinking gives the empty bottle back ---
+	// --- Crafting ---
+	struct Ingredient
+	{
+		std::string form;   // "Plugin.esm|HEXID"
+		int         count = 1;
+		int         group = 0;  // trigger (for trigger ingredients) or payload (for fillings)
+	};
+	inline std::vector<std::string> containers;         // any one (sContainer)
+	inline std::vector<Ingredient>  triggerIngredients;  // all of them (sImpactIngredient, ...)
+	inline std::vector<Ingredient>  fillings;            // any one per payload (sFragFilling, ...)
+
+	// --- Bottle return: drinking wine gives the empty bottle back ---
 	inline bool returnEmptyBottles = true;
-	inline bool useBuiltInBottles = true;    // the vanilla drink -> bottle list
-	inline bool matchBottlesByModel = true;  // other drinks that use an empty container's bottle model
+	inline bool useBuiltInBottles = true;
+	inline bool matchBottlesByModel = true;
 	inline std::vector<std::pair<std::string, std::string>> bottles;  // sBottle = drink -> empty
 
-	// --- Loot: pots added to vanilla leveled lists at load ---
+	// --- Loot: bombs added to vanilla leveled lists at load ---
 	struct Loot
 	{
-		std::string list;   // "Skyrim.esm|09AF0A"
-		int         type = 0;   // 0 Fire, 1 Frost, 2 Smoke, 3 Thunder
-		int         level = 1;  // player level it starts showing up at
+		std::string list;
+		int         bomb = 0;  // Bombs index
+		int         level = 1;
 		int         count = 1;
 	};
 	inline bool              addToLeveledLists = true;
-	inline std::vector<Loot> loot;  // sLoot = list, fire|frost|smoke|thunder, level, count
-
-	// "fire" / "frost" / "smoke" / "thunder" -> type index (-1 = unknown)
-	int TypeFromWord(const std::string& a_word);
+	inline std::vector<Loot> loot;  // sLoot = list, payload trigger strength, level, count
 
 	// --- Messages ---
 	inline bool printToConsole = true;

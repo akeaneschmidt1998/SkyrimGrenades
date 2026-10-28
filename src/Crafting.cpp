@@ -50,75 +50,110 @@ namespace
 		return it == a_inv.end() ? 0 : it->second;
 	}
 
-	// Containers that look the same in game (four "Empty Wine Bottle" forms) are one choice.
-	struct ContainerGroup
+	RE::TESBoundObject* Resolve(const std::string& a_ref)
 	{
-		std::string                      name;
-		std::vector<RE::TESBoundObject*> forms;
+		auto* form = Forms::Lookup(a_ref);
+		auto* obj = form ? form->As<RE::TESBoundObject>() : nullptr;
+		return obj && HasName(obj) ? obj : nullptr;  // nameless items can't be picked up, so never carried
+	}
 
-		int Have(const Inv& a_inv) const
-		{
-			int n = 0;
-			for (auto* f : forms) {
-				n += ::Have(a_inv, f);
+	// Every configured container, in order (the first ones you carry get used first).
+	std::vector<RE::TESBoundObject*> Containers()
+	{
+		std::vector<RE::TESBoundObject*> out;
+		for (const auto& ref : Config::containers) {
+			if (auto* obj = Resolve(ref); obj && std::ranges::find(out, obj) == out.end()) {
+				out.push_back(obj);
 			}
-			return n;
 		}
-	};
+		return out;
+	}
 
-	struct Filling
+	int ContainersHeld(const Inv& a_inv)
+	{
+		int n = 0;
+		for (auto* c : Containers()) {
+			n += Have(a_inv, c);
+		}
+		return n;
+	}
+
+	struct Part
 	{
 		RE::TESBoundObject* form = nullptr;
-		int                 per = 1;  // per pot
-		int                 type = 0;
+		int                 count = 1;
 	};
 
-	std::vector<ContainerGroup> AllContainers()
+	std::vector<Part> TriggerParts(int a_trigger)
 	{
-		std::vector<ContainerGroup> out;
-		for (const auto& ref : Config::containers) {
-			auto* form = Forms::Lookup(ref);
-			auto* obj = form ? form->As<RE::TESBoundObject>() : nullptr;
-			if (!obj || !HasName(obj)) {
-				continue;  // nameless items can't be picked up, so never carried
-			}
-			const auto name = NameOf(obj);
-			auto       it = std::ranges::find(out, name, &ContainerGroup::name);
-			if (it == out.end()) {
-				out.push_back({ name, { obj } });
-			} else if (std::ranges::find(it->forms, obj) == it->forms.end()) {
-				it->forms.push_back(obj);
+		std::vector<Part> out;
+		for (const auto& i : Config::triggerIngredients) {
+			if (i.group == a_trigger) {
+				if (auto* obj = Resolve(i.form)) {
+					out.push_back({ obj, i.count });
+				}
 			}
 		}
 		return out;
 	}
 
-	std::vector<Filling> AllFillings(int a_type)
+	std::vector<Part> Fillings(int a_payload)
 	{
-		std::vector<Filling> out;
-		const auto&          types = Forms::Types();
-		for (const auto& f : Config::fillings) {
-			if (f.type != a_type || static_cast<std::size_t>(f.type) >= types.size() || !types[f.type].Ready()) {
-				continue;
-			}
-			auto* form = Forms::Lookup(f.form);
-			if (auto* obj = form ? form->As<RE::TESBoundObject>() : nullptr; obj && HasName(obj)) {
-				out.push_back({ obj, f.count, f.type });
+		std::vector<Part> out;
+		for (const auto& i : Config::fillings) {
+			if (i.group == a_payload) {
+				if (auto* obj = Resolve(i.form); obj && std::ranges::none_of(out, [&](const Part& p) { return p.form == obj; })) {
+					out.push_back({ obj, i.count });
+				}
 			}
 		}
 		return out;
 	}
 
-	std::vector<int> ReadyTypes()
+	// What one bomb takes (besides a container): the trigger's parts and the filling, times the
+	// strength (mild 1x, moderate 2x, major 3x), with the same item merged (Fire Salts twice).
+	std::vector<Part> Recipe(int a_trigger, const Part& a_filling, int a_strength)
 	{
-		std::vector<int> out;
-		const auto&      types = Forms::Types();
-		for (std::size_t i = 0; i < types.size(); ++i) {
-			if (types[i].Ready()) {
-				out.push_back(static_cast<int>(i));
+		std::vector<Part> out;
+		auto add = [&](RE::TESBoundObject* a_form, int a_count) {
+			for (auto& p : out) {
+				if (p.form == a_form) {
+					p.count += a_count;
+					return;
+				}
+			}
+			out.push_back({ a_form, a_count });
+		};
+		const int mult = a_strength + 1;
+		for (const auto& p : TriggerParts(a_trigger)) {
+			add(p.form, p.count * mult);
+		}
+		add(a_filling.form, a_filling.count * mult);
+		return out;
+	}
+
+	int CanMake(const Inv& a_inv, const std::vector<Part>& a_recipe)
+	{
+		int n = ContainersHeld(a_inv);
+		for (const auto& p : a_recipe) {
+			n = (std::min)(n, Have(a_inv, p.form) / p.count);
+		}
+		return (std::max)(n, 0);
+	}
+
+	std::string Describe(const std::vector<Part>& a_parts, const Inv* a_inv)
+	{
+		std::string s;
+		for (const auto& p : a_parts) {
+			if (!s.empty()) {
+				s += ", ";
+			}
+			s += p.count > 1 ? fmt::format("{} {}", p.count, NameOf(p.form)) : NameOf(p.form);
+			if (a_inv) {
+				s += fmt::format(" (have {})", Have(*a_inv, p.form));
 			}
 		}
-		return out;
+		return s;
 	}
 
 	// Things you can use first, the rest after (stable, so the INI order holds within each part).
@@ -130,7 +165,7 @@ namespace
 
 	// --- A message box with a list of choices --------------------------------------------
 	// onPick gets the chosen entry's index into entries, or -1 for Back.
-	struct ListBox
+		struct ListBox
 	{
 		std::string              title;
 		std::vector<std::string> entries;
@@ -217,61 +252,63 @@ namespace
 		RE::MessageBoxMenu::QueueMessage(data);
 	}
 
-	// --- The three steps ------------------------------------------------------------------
-	void ChooseType();
-	void ChooseContainer(int a_type);
-	void ChooseFilling(int a_type, const ContainerGroup& a_container);
-	void ChooseAmount(const ContainerGroup& a_container, const Filling& a_filling);
+	// --- The steps: trigger -> payload -> (filling) -> strength -> amount -------------------
+	void ChooseTrigger();
+	void ChoosePayload(int a_trigger);
+	void ChooseFilling(int a_trigger, int a_payload);
+	void ChooseStrength(int a_trigger, int a_payload, Part a_filling);
 
-	void Make(const ContainerGroup& a_container, const Filling& a_filling, int a_wanted)
+	void Make(int a_bomb, const std::vector<Part>& a_recipe, int a_wanted)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
-		auto& type = Forms::Types()[a_filling.type];
+		auto& type = Forms::Types()[a_bomb];
 		if (!player || !type.Ready()) {
 			return;
 		}
 		// count again: the inventory may have changed while the menu was up
 		const auto inv = Inventory(player);
-		const int  n = (std::min)({ a_wanted, a_container.Have(inv), Have(inv, a_filling.form) / a_filling.per });
+		const int  n = (std::min)(a_wanted, CanMake(inv, a_recipe));
 		if (n <= 0) {
 			Notify("You no longer have what that takes.");
 			return;
 		}
 		int left = n;
-		for (auto* f : a_container.forms) {
-			const int take = (std::min)(left, Have(inv, f));
+		for (auto* c : Containers()) {
+			const int take = (std::min)(left, Have(inv, c));
 			if (take > 0) {
-				player->RemoveItem(f, take, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+				player->RemoveItem(c, take, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 				left -= take;
 			}
 		}
-		player->RemoveItem(a_filling.form, n * a_filling.per, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+		for (const auto& p : a_recipe) {
+			player->RemoveItem(p.form, p.count * n, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+		}
 		player->AddObjectToContainer(type.item, nullptr, n, nullptr);
 		RE::PlaySound("UIAlchemyCreatePotion");
-		Notify(n == 1 ? fmt::format("Made a {}", type.name) : fmt::format("Made {} {}s", n, type.name));
+		Notify(n == 1 ? fmt::format("Made a {}", type.name) : fmt::format("Made {} x {}", n, type.name));
 	}
 
-	void ChooseAmount(const ContainerGroup& a_container, const Filling& a_filling)
+	void ChooseAmount(int a_trigger, int a_payload, Part a_filling, int a_strength)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
 			return;
 		}
-		const auto  inv = Inventory(player);
-		const auto& potName = Forms::Types()[a_filling.type].name;
-		const int   haveC = a_container.Have(inv);
-		const int   haveF = Have(inv, a_filling.form);
-		const int   max = (std::min)(haveC, haveF / a_filling.per);
+		const int  bomb = Bombs::Index(a_trigger, a_payload, a_strength);
+		const auto recipe = Recipe(a_trigger, a_filling, a_strength);
+		const auto inv = Inventory(player);
+		const int  max = CanMake(inv, recipe);
+		const auto& name = Forms::Types()[bomb].name;
 
 		auto box = std::make_shared<ListBox>();
 		box->back = true;
 		std::vector<int> amounts;
 		if (max <= 0) {
 			// just information: what it takes and what's missing
-			box->title = fmt::format("A {} takes 1 {} (you have {}) and {} {} (you have {}).", potName,
-				a_container.name, haveC, a_filling.per, NameOf(a_filling.form), haveF);
+			box->title = fmt::format("A {} takes an empty container (you have {}) and {}.", name, ContainersHeld(inv),
+				Describe(recipe, &inv));
 		} else if (max == 1) {
-			Make(a_container, a_filling, 1);
+			Make(bomb, recipe, 1);
 			return;
 		} else {
 			amounts.push_back(1);
@@ -279,113 +316,136 @@ namespace
 				amounts.push_back(5);
 			}
 			amounts.push_back(max);
-			box->title = fmt::format("How many {}s? (up to {})", potName, max);
+			box->title = fmt::format("How many {}? (up to {})", name, max);
 			for (const int a : amounts) {
 				box->entries.push_back(a == max ? fmt::format("All ({})", a) : std::to_string(a));
 			}
 		}
-		box->onPick = [a_container, a_filling, amounts](int i) {
+		box->onPick = [=](int i) {
 			if (i < 0) {
-				ChooseFilling(a_filling.type, a_container);
+				ChooseStrength(a_trigger, a_payload, a_filling);
 			} else {
-				Make(a_container, a_filling, amounts[i]);
+				Make(bomb, recipe, amounts[i]);
 			}
 		};
 		Show(box);
 	}
 
-	void ChooseFilling(int a_type, const ContainerGroup& a_container)
+	void ChooseStrength(int a_trigger, int a_payload, Part a_filling)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
 			return;
 		}
 		const auto inv = Inventory(player);
-		auto       fills = AllFillings(a_type);
-		UsableFirst(fills, [&](const Filling& f) { return Have(inv, f.form) >= f.per; });
-
-		auto box = std::make_shared<ListBox>();
-		const int haveC = a_container.Have(inv);
-		const auto& pot = Forms::Types()[a_type].name;
-		box->title = haveC > 0 ? fmt::format("{}: fill the {} with...", pot, a_container.name) :
-		                         fmt::format("{}: fill the {} with... (you have none)", pot, a_container.name);
-		for (const auto& f : fills) {
-			const int  have = Have(inv, f.form);
-			const auto qty = f.per == 1 ? fmt::format("({})", have) : fmt::format("x{} ({})", f.per, have);
-			box->entries.push_back(fmt::format("{} {}", NameOf(f.form), qty));
+		auto       box = std::make_shared<ListBox>();
+		box->title = fmt::format("{} {} bomb with {}: how strong?", Bombs::kPayloadNames[a_payload], Bombs::kTriggerNames[a_trigger],
+			NameOf(a_filling.form));
+		for (int s = 0; s < Bombs::kStrengths; ++s) {
+			const auto recipe = Recipe(a_trigger, a_filling, s);
+			const int  can = CanMake(inv, recipe);
+			box->entries.push_back(can > 0 ? fmt::format("{} (can make {}): {}", Bombs::kStrengthNames[s], can, Describe(recipe, nullptr)) :
+			                                 fmt::format("{}: {}", Bombs::kStrengthNames[s], Describe(recipe, nullptr)));
 		}
 		box->back = true;
-		box->onPick = [a_type, a_container, fills](int i) {
+		box->onPick = [=](int i) {
 			if (i < 0) {
-				ChooseContainer(a_type);
+				// back to the filling list if there was one to choose from, else to payloads
+				const auto inv2 = Inventory(RE::PlayerCharacter::GetSingleton());
+				const auto fills = Fillings(a_payload);
+				const auto usable = std::ranges::count_if(fills, [&](const Part& f) { return Have(inv2, f.form) >= f.count; });
+				if (usable > 1 || usable == 0) {
+					ChooseFilling(a_trigger, a_payload);
+				} else {
+					ChoosePayload(a_trigger);
+				}
 			} else {
-				ChooseAmount(a_container, fills[i]);
+				ChooseAmount(a_trigger, a_payload, a_filling, i);
 			}
 		};
 		Show(box);
 	}
 
-	void ChooseContainer(int a_type)
+	void ChooseFilling(int a_trigger, int a_payload)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
 			return;
 		}
 		const auto inv = Inventory(player);
-		auto       containers = AllContainers();
-		if (containers.empty()) {
-			Notify("No containers are set up (check [Containers] in FirePots.ini).");
+		auto       fills = Fillings(a_payload);
+		if (fills.empty()) {
+			Notify(fmt::format("No {} fillings are set up (check [Fillings] in FirePots.ini).", Bombs::kPayloadNames[a_payload]));
 			return;
 		}
-		UsableFirst(containers, [&](const ContainerGroup& c) { return c.Have(inv) > 0; });
-
-		auto box = std::make_shared<ListBox>();
-		box->title = fmt::format("Make a {}: choose a container", Forms::Types()[a_type].name);
-		for (const auto& c : containers) {
-			box->entries.push_back(fmt::format("{} ({})", c.name, c.Have(inv)));
+		UsableFirst(fills, [&](const Part& f) { return Have(inv, f.form) >= f.count; });
+		const auto usable = std::ranges::count_if(fills, [&](const Part& f) { return Have(inv, f.form) >= f.count; });
+		if (usable == 1) {
+			ChooseStrength(a_trigger, a_payload, fills.front());  // nothing to choose
+			return;
 		}
-		box->back = ReadyTypes().size() > 1;
-		box->onPick = [a_type, containers](int i) {
+		auto box = std::make_shared<ListBox>();
+		box->title = fmt::format("{} payload: fill it with...", Bombs::kPayloadNames[a_payload]);
+		for (const auto& f : fills) {
+			const int have = Have(inv, f.form);
+			box->entries.push_back(f.count == 1 ? fmt::format("{} ({})", NameOf(f.form), have) :
+			                                      fmt::format("{} x{} ({})", NameOf(f.form), f.count, have));
+		}
+		box->back = true;
+		box->onPick = [a_trigger, a_payload, fills](int i) {
 			if (i < 0) {
-				ChooseType();
+				ChoosePayload(a_trigger);
 			} else {
-				ChooseFilling(a_type, containers[i]);
+				ChooseStrength(a_trigger, a_payload, fills[i]);
 			}
 		};
 		Show(box);
 	}
 
-	// Step 0: which pot. Each shows how many you could make right now.
-	void ChooseType()
+	void ChoosePayload(int a_trigger)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
 			return;
 		}
-		const auto types = ReadyTypes();
-		if (types.size() == 1) {
-			ChooseContainer(types.front());
+		const auto inv = Inventory(player);
+		auto       box = std::make_shared<ListBox>();
+		box->title = fmt::format("{} bomb: what payload?", Bombs::kTriggerNames[a_trigger]);
+		for (int p = 0; p < Bombs::kPayloads; ++p) {
+			int best = 0;  // most mild bombs any one filling allows
+			for (const auto& f : Fillings(p)) {
+				best = (std::max)(best, CanMake(inv, Recipe(a_trigger, f, Bombs::kMild)));
+			}
+			box->entries.push_back(best > 0 ? fmt::format("{} (can make {})", Bombs::kPayloadNames[p], best) :
+			                                  std::string(Bombs::kPayloadNames[p]));
+		}
+		box->back = true;
+		box->onPick = [a_trigger](int i) {
+			if (i < 0) {
+				ChooseTrigger();
+			} else {
+				ChooseFilling(a_trigger, i);
+			}
+		};
+		Show(box);
+	}
+
+	void ChooseTrigger()
+	{
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		if (!player) {
 			return;
 		}
 		const auto inv = Inventory(player);
-		int        containers = 0;
-		for (const auto& c : AllContainers()) {
-			containers += c.Have(inv);
+		auto       box = std::make_shared<ListBox>();
+		box->title = fmt::format("Make a bomb: what kind? (empty containers: {})", ContainersHeld(inv));
+		static constexpr const char* kLabels[Bombs::kTriggers] = { "Thrown, impact", "Thrown, short fuse", "Thrown, long fuse", "Tripwire (placed)" };
+		for (int t = 0; t < Bombs::kTriggers; ++t) {
+			box->entries.push_back(fmt::format("{}: {}", kLabels[t], Describe(TriggerParts(t), &inv)));
 		}
-		auto box = std::make_shared<ListBox>();
-		box->title = "Make a pot: which kind?";
-		for (const int t : types) {
-			int fills = 0;  // pots' worth of filling
-			for (const auto& f : AllFillings(t)) {
-				fills += Have(inv, f.form) / f.per;
-			}
-			const int can = (std::min)(containers, fills);
-			box->entries.push_back(can > 0 ? fmt::format("{} (can make {})", Forms::Types()[t].name, can) :
-			                                 fmt::format("{}", Forms::Types()[t].name));
-		}
-		box->onPick = [types](int i) {
+		box->onPick = [](int i) {
 			if (i >= 0) {
-				ChooseContainer(types[i]);
+				ChoosePayload(i);
 			}
 		};
 		Show(box);
@@ -401,9 +461,9 @@ namespace Crafting
 			return;
 		}
 		if (!Config::craftInCombat && a_player->IsInCombat()) {
-			Notify("You can't make pots in combat.");
+			Notify("You can't make bombs in combat.");
 			return;
 		}
-		ChooseType();
+		ChooseTrigger();
 	}
 }

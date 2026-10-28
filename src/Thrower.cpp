@@ -278,11 +278,92 @@ namespace
 		g_flight.samples.push_back({ g_flight.time, p });
 	}
 
+	// --- Oil: slicks left by oil bombs, set alight when a fire bomb bursts in one ---------------
+	struct Live
+	{
+		RE::ProjectileHandle handle;
+		int                  payload = 0;
+		int                  strength = 0;
+		Vec3                 last;
+	};
+	struct Slick
+	{
+		Vec3  pos;
+		float radius = 0.0f;
+		float ttl = 0.0f;  // seconds left (the slick hazard lasts 60 s)
+	};
+	std::vector<Live>  g_live;
+	std::vector<Slick> g_slicks;
+
+	void Track(const RE::ProjectileHandle& a_handle, const Forms::PotType& a_type)
+	{
+		if (a_type.payload != Bombs::kOil && a_type.payload != Bombs::kFire) {
+			return;
+		}
+		Live l;
+		l.handle = a_handle;
+		l.payload = a_type.payload;
+		l.strength = a_type.strength;
+		if (auto p = a_handle.get()) {
+			l.last = ToVec(p->GetPosition());
+		}
+		g_live.push_back(l);
+	}
+
+	void Ignite(RE::PlayerCharacter* a_player, const Slick& a_slick)
+	{
+		auto* base = Forms::oilFireProjectile;
+		if (!base) {
+			return;
+		}
+		// dropped straight down onto the slick: bursts on contact and leaves a big fire
+		RE::Projectile::ProjectileRot rot{ 1.5707963f, 0.0f };
+		RE::Projectile::LaunchData    data(base, a_player, ToNi(a_slick.pos + Vec3{ 0.0f, 0.0f, 30.0f }), rot);
+		data.autoAim = false;
+		data.useOrigin = true;
+		RE::ProjectileHandle h;
+		RE::Projectile::Launch(&h, data);
+		logger::info("Oil slick at ({:.0f}, {:.0f}, {:.0f}) ignited", a_slick.pos.x, a_slick.pos.y, a_slick.pos.z);
+	}
+
+	void UpdateOil(RE::PlayerCharacter* a_player, float a_dt)
+	{
+		for (auto& s : g_slicks) {
+			s.ttl -= a_dt;
+		}
+		std::erase_if(g_slicks, [](const Slick& s) { return s.ttl <= 0.0f; });
+
+		for (auto it = g_live.begin(); it != g_live.end();) {
+			auto proj = it->handle.get();
+			if (proj && !proj->IsDeleted() && !proj->IsDisabled()) {
+				it->last = ToVec(proj->GetPosition());
+				++it;
+				continue;
+			}
+			// gone: it burst at its last position
+			if (it->payload == Bombs::kOil) {
+				g_slicks.push_back({ it->last, Bombs::OilSlickRadius(it->strength), 60.0f });
+			} else if (it->payload == Bombs::kFire) {
+				const float blast = Bombs::BlastRadius(Bombs::kFire, it->strength);
+				for (auto s = g_slicks.begin(); s != g_slicks.end();) {
+					if ((s->pos - it->last).Length() <= s->radius + blast) {
+						Ignite(a_player, *s);
+						s = g_slicks.erase(s);
+					} else {
+						++s;
+					}
+				}
+			}
+			it = g_live.erase(it);
+		}
+	}
+
 	// --- Aim -------------------------------------------------------------------------------
 	struct Aim
 	{
 		Vec3 origin;
 		Vec3 forward;  // camera forward (where the crosshair points)
+		Vec3 camera;   // camera position
 	};
 
 	std::optional<Aim> GetAim(RE::PlayerCharacter* a_player, bool a_leftHand)
@@ -296,6 +377,7 @@ namespace
 		Aim aim;
 		aim.forward = Vec3{ w.rotate.entry[0][1], w.rotate.entry[1][1], w.rotate.entry[2][1] }.Normalized();
 		const Vec3 camPos = ToVec(w.translate);
+		aim.camera = camPos;
 
 		const bool firstPerson = camera->IsInFirstPerson();
 		RE::NiAVObject* hand = nullptr;
@@ -357,11 +439,65 @@ namespace
 		Ballistics::Launch launch;
 		float              speed = 0.0f;
 		Vec3               dir;
+		bool               place = false;  // tripwire: set down at placePoint instead of thrown
+		Vec3               placePoint;
 	};
 
-	Plan MakePlan(const Aim& a_aim, float a_charge)
+	RayCtx MakeRayCtx(RE::PlayerCharacter* a_player)
+	{
+		auto*  cell = a_player->GetParentCell();
+		RayCtx ctx;
+		ctx.world = cell ? cell->GetbhkWorld() : nullptr;
+		if (ctx.world) {
+			RE::CFilter own{};
+			a_player->GetCollisionFilterInfo(own);
+			// projectile layer, in the player's own collision group so the ray ignores the player
+			ctx.filter = (own.filter & 0xFFFF0000u) | static_cast<std::uint32_t>(RE::COL_LAYER::kProjectile);
+		}
+		return ctx;
+	}
+
+	// Where a tripwire goes: the ground under the crosshair, at most placeReach ahead.
+	Vec3 PlacePoint(RE::PlayerCharacter* a_player, const Aim& a_aim)
+	{
+		auto        ctx = MakeRayCtx(a_player);
+		const float reach = Config::placeReach + 150.0f;  // the camera sits behind the player in third person
+		Vec3        point = a_aim.camera + a_aim.forward * reach;
+		float       frac = 1.0f;
+		Vec3        normal;
+		if (ctx.world && CastRay(ctx, a_aim.camera, point, frac, normal)) {
+			point = a_aim.camera + a_aim.forward * (reach * frac);
+		}
+		// keep it within reach of the player, then drop it to the ground
+		const Vec3 feet = ToVec(a_player->GetPosition());
+		Vec3       flat = point - feet;
+		flat.z = 0.0f;
+		if (flat.Length() > Config::placeReach) {
+			flat = flat.Normalized() * Config::placeReach;
+		}
+		point = Vec3{ feet.x + flat.x, feet.y + flat.y, (std::max)(point.z, feet.z) + 40.0f };
+		const Vec3 below = point + Vec3{ 0.0f, 0.0f, -600.0f };
+		if (ctx.world && CastRay(ctx, point, below, frac, normal)) {
+			point = point + (below - point) * frac;
+		} else {
+			point.z = feet.z;
+		}
+		return point;
+	}
+
+	Plan MakePlan(RE::PlayerCharacter* a_player, const Aim& a_aim, float a_charge)
 	{
 		Plan p;
+		if (CurrentType().trigger == Bombs::kTripwire) {
+			p.place = true;
+			p.placePoint = PlacePoint(a_player, a_aim);
+			p.speed = 30.0f;
+			p.dir = { 0.0f, 0.0f, -1.0f };
+			p.launch.origin = p.placePoint + Vec3{ 0.0f, 0.0f, 12.0f };
+			p.launch.velocity = p.dir * p.speed;
+			p.launch.gravity = PreviewGravity();
+			return p;
+		}
 		p.speed = Ballistics::ChargeToSpeed(a_charge, Config::minSpeed, Config::maxSpeed);
 		p.dir = Ballistics::Loft(a_aim.forward, Config::loftDegrees * Ballistics::kPi / 180.0f);
 		p.launch.origin = a_aim.origin;
@@ -374,21 +510,28 @@ namespace
 	{
 		ArcState::Frame frame;
 		frame.potName = CurrentType().name;
-		frame.color = CurrentType().color;
+		frame.color = CurrentType().payload;
 		frame.active = true;
 		frame.charge = a_charge;
 		frame.speed = a_plan.speed;
 		frame.potsLeft = a_pots;
 
-		auto*  cell = a_player->GetParentCell();
-		RayCtx ctx;
-		ctx.world = cell ? cell->GetbhkWorld() : nullptr;
-		if (ctx.world) {
-			RE::CFilter own{};
-			a_player->GetCollisionFilterInfo(own);
-			// projectile layer, in the player's own collision group so the ray ignores the player
-			ctx.filter = (own.filter & 0xFFFF0000u) | static_cast<std::uint32_t>(RE::COL_LAYER::kProjectile);
+		auto* camera = RE::Main::WorldRootCamera();
+		if (!Config::showArc || !camera) {
+			ArcState::Publish(std::move(frame));  // the meter only
+			return;
 		}
+		if (a_plan.place) {
+			// tripwire: a ring where it will sit, as wide as its trigger distance
+			frame.landed = true;
+			frame.path.push_back(Project(camera, a_plan.placePoint));
+			for (const auto& p : Ballistics::Ring(a_plan.placePoint + Vec3{ 0.0f, 0.0f, 4.0f }, Vec3{ 0.0f, 0.0f, 1.0f }, Bombs::kTripwireRadius, 32)) {
+				frame.ring.push_back(Project(camera, p));
+			}
+			ArcState::Publish(std::move(frame));
+			return;
+		}
+		auto ctx = MakeRayCtx(a_player);
 		bool hitActor = false;
 		const auto arc = Ballistics::Trace(a_plan.launch, Config::arcStep, Config::arcMaxTime,
 			[&](const Vec3& a_from, const Vec3& a_to, float& a_fraction, Vec3& a_normal) {
@@ -402,15 +545,14 @@ namespace
 		frame.landed = arc.hit;
 		frame.hitsActor = arc.hit && hitActor;
 
-		if (auto* camera = RE::Main::WorldRootCamera()) {
-			frame.path.reserve(arc.points.size());
-			for (const auto& p : arc.points) {
-				frame.path.push_back(Project(camera, p));
-			}
-			if (arc.hit && Config::blastRadius > 0.0f) {
-				for (const auto& p : Ballistics::Ring(arc.hitPoint, arc.hitNormal, Config::blastRadius, 32)) {
-					frame.ring.push_back(Project(camera, p));
-				}
+		frame.path.reserve(arc.points.size());
+		for (const auto& p : arc.points) {
+			frame.path.push_back(Project(camera, p));
+		}
+		if (arc.hit) {
+			const float r = Bombs::BlastRadius(CurrentType().payload, CurrentType().strength);
+			for (const auto& p : Ballistics::Ring(arc.hitPoint, arc.hitNormal, r, 32)) {
+				frame.ring.push_back(Project(camera, p));
 			}
 		}
 		ArcState::Publish(std::move(frame));
@@ -438,7 +580,7 @@ namespace
 		RE::ProjectileHandle handle;
 		RE::Projectile::Launch(&handle, data);
 		if (!handle) {
-			Report("Fire Pot launch failed (see FirePots.log)", true);
+			Report("Bomb launch failed (see FirePots.log)", true);
 			logger::error("Projectile::Launch returned no projectile");
 			return;
 		}
@@ -446,7 +588,8 @@ namespace
 			a_player->RemoveItem(type.item, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 		}
 
-		if (Config::autoCalibrate || g_gravityPerUnit <= 0.0f) {
+		Track(handle, type);
+		if (type.trigger == Bombs::kImpact && (Config::autoCalibrate || g_gravityPerUnit <= 0.0f)) {
 			g_flight = Flight{};
 			g_flight.active = true;
 			g_flight.handle = handle;
@@ -454,8 +597,8 @@ namespace
 			g_flight.baseGravity = base->data.gravity;
 			g_flight.dir = a_plan.dir;
 		}
-		logger::info("Threw a {}: {:.0f}% wind-up, {:.0f} u/s, pitch {:.1f} deg, from ({:.0f}, {:.0f}, {:.0f})",
-			type.name, a_charge * 100.0f, a_plan.speed, std::asin(a_plan.dir.z) * 180.0f / Ballistics::kPi,
+		logger::info("{} a {}: {:.0f}% wind-up, {:.0f} u/s, pitch {:.1f} deg, from ({:.0f}, {:.0f}, {:.0f})",
+			a_plan.place ? "Placed" : "Threw", type.name, a_charge * 100.0f, a_plan.speed, std::asin(a_plan.dir.z) * 180.0f / Ballistics::kPi,
 			a_plan.launch.origin.x, a_plan.launch.origin.y, a_plan.launch.origin.z);
 	}
 
@@ -540,6 +683,7 @@ namespace
 		}
 
 		TrackFlight(dt);
+		UpdateOil(a_player, dt);
 		g_throw.cooldown = (std::max)(0.0f, g_throw.cooldown - dt);
 
 		if (g_pending.active) {
@@ -548,7 +692,7 @@ namespace
 			if (CountPots(a_player, CurrentType()) < g_pending.countBefore) {
 				g_pending.active = false;
 				if (const auto aim = GetAim(a_player, g_pending.leftHand)) {
-					Launch(a_player, MakePlan(*aim, g_pending.charge), g_pending.charge, false);
+					Launch(a_player, MakePlan(a_player, *aim, g_pending.charge), g_pending.charge, false);
 				}
 			} else if (g_pending.waited > 0.75f) {
 				g_pending.active = false;  // vanilla cancelled the cast (released too soon, staggered...)
@@ -581,12 +725,12 @@ namespace
 					EquipPot(a_player, static_cast<int>(g_typeIndex), left);
 					Report(fmt::format("{} ({})", CurrentType().name, CountPots(a_player, CurrentType())), true);
 				} else {
-					Report("You have no other kind of pot.", true);
+					Report("You have no other kind of bomb.", true);
 				}
 			} else if (SelectCarriedType(a_player, true)) {
 				Report(fmt::format("{} ({})", CurrentType().name, CountPots(a_player, CurrentType())), true);
 			} else {
-				Report("You have no pots.", true);
+				Report("You have no bombs.", true);
 			}
 		}
 
@@ -631,7 +775,7 @@ namespace
 				g_throw.leftHand = true;
 				const auto before = g_typeIndex;
 				if (!SelectCarriedType(a_player, false)) {
-					Report("You have no pots.", true);
+					Report("You have no bombs.", true);
 					return;
 				}
 				if (g_typeIndex != before) {
@@ -665,7 +809,7 @@ namespace
 			StopWinding();
 			return;
 		}
-		const Plan plan = MakePlan(*aim, charge);
+		const Plan plan = MakePlan(a_player, *aim, charge);
 
 		if (!IsDown(g_throw.source)) {
 			if (g_throw.source != 0) {
@@ -685,7 +829,7 @@ namespace
 			return;
 		}
 
-		if (Config::showArc) {
+		if (Config::showArc || Config::showChargeMeter) {
 			PublishPreview(a_player, plan, charge, g_throw.pots);
 		}
 	}
@@ -737,6 +881,8 @@ namespace Thrower
 		StopWinding();
 		g_flight = Flight{};
 		g_pending = PendingCast{};
+		g_live.clear();
+		g_slicks.clear();
 		g_input.keyDown = false;
 		g_input.pressed = false;
 		g_input.cycle = false;

@@ -1,22 +1,27 @@
 // Builds FirePots.esp (ESL-flagged) with Mutagen, then reads it back and checks every record.
 //
-// Four pot types: Fire, Frost, Smoke, Thunder. Each has
-//   FP_<Type>Pot            SCRL  the item: a scroll, so it sits in the Scrolls tab, can be bought,
-//                                 sold, stashed, favorited and equipped to a hand
-//   FP_<Type>PotEffect      MGEF  the scroll's effect: does nothing itself (script archetype) and
-//                                 fires a harmless invisible projectile, so casting it plays the
-//                                 normal hand-release animation; FirePots.dll then launches the
-//                                 real pot with the wind-up speed. Also carries the description
-//   FP_<Type>PotProjectile  PROJ  what flies: a missile with gravity that explodes on any contact
-//   FP_<Type>PotExplosion   EXPL  the shatter: sounds, decal, and what the pot does:
-//     Fire     fire-damage burst (FP_FirePotBurstEnch) + vanilla burning patch
-//     Frost    frost-damage burst (FP_FrostPotBurstEnch, also drains stamina)
-//     Smoke    a lingering cloud (FP_SmokeCloud hazard) that makes anyone inside invisible,
-//              which ends as soon as they attack or cast (vanilla invisibility rules)
-//     Thunder  a flash (blinding image-space effect near the blast) and a bang that makes
-//              everyone up to level 25 in the blast flee for 10 s (FP_ThunderPotBurstEnch)
+// Bombs are trigger x payload x strength; every combination is its own item:
+//   triggers   0 Impact (explodes on contact), 1 Short Fuse (bounces, 1.5 s), 2 Long Fuse (4 s),
+//              3 Tripwire (placed; goes off when someone comes close)
+//   payloads   0 Frag, 1 Fire, 2 Oil, 3 Smoke, 4 Fear, 5 Frenzy, 6 Concussion
+//   strengths  0 Mild, 1 Moderate, 2 Major (bigger radius, more damage, longer effects)
+//   index = (trigger * 7 + payload) * 3 + strength   (0..83)
 //
-// No recipes: pots are made anywhere with FirePots.dll's pot-making menu (craft key, H).
+// Records (fixed IDs: FirePots.dll computes them from the index, so they must never move):
+//   0x900 + index  SCRL  the bomb: a scroll (Scrolls tab; buy, sell, stash, favorite, equip to a
+//                        hand). Casting it plays the hand's release animation and fires an
+//                        invisible do-nothing projectile; FirePots.dll then launches the real bomb
+//   0x960 + index  MGEF  that scroll's effect (does nothing) + the bomb's description
+//   0xA00 + index  PROJ  the flying/placed bomb: impact = missile, fuses/tripwire = bouncing
+//                        "lobber" with a timer or a proximity trigger
+//   0xA60 + p*3+s  EXPL  what the payload does, per strength
+//   0xA80 + p*3+s  ENCH  the payload's effect on everyone in the blast (where it has one)
+//   0xAA0..        smoke cloud / oil slick hazards, their spells and effects, fear/frenzy effects,
+//                  the oil-fire explosion (FirePots.dll sets it off when a fire bomb lands in oil)
+//   0x8F0          the invisible do-nothing projectile
+//   0xB00          the MCM quest (MCM Helper menu)
+//
+// No recipes: bombs are made anywhere with FirePots.dll's menu (craft key, H).
 // Meshes: models are left empty; FirePots.dll copies them from vanilla forms at load.
 //
 // Usage: MakePlugin <output folder>
@@ -36,8 +41,28 @@ var L_PROJECTILE = Sk(0x088767);
 var EitherHand = Sk(0x013F44);
 var VendorItemScroll = Sk(0x0A0E57);
 var VendorItemPotion = Sk(0x08CDEC);
-var TRPOilLampBreak = Sk(0x08BBC6);  // shatter sound, every pot
-const float BlastRadius = 160f;      // units (~2.3 m); the arc preview draws this ring
+var TRPOilLampBreak = Sk(0x08BBC6);         // shatter
+var TRPOilIgniteLowSD = Sk(0x042526);
+var FXExplosionIceSD = Sk(0x023992);
+var FXExplosionCatapultNear = Sk(0x0FD989);  // big boom
+var ThunderA = Sk(0x0A0F52);                 // Unrelenting Force thunder
+var ScorchImpact = Sk(0x01C2AF);             // MAGFirebolt01ImpactSet
+var ShockImpact = Sk(0x038B05);              // MAGShock01ImpactSet
+var FireSmLong = Sk(0x03E074);
+var FireLgShort = Sk(0x03E076);
+var FireLgLong = Sk(0x03E075);
+var EnchFireDamageFFContact = Sk(0x04605A);
+var StaggerAttackFFContact = Sk(0x07809B);
+var FlashImod = Sk(0x07E8FD);                // alduinExplosionFlashImod
+var PushImod = Sk(0x09E586);                 // MAGShoutPush01Imod
+var playerRef = FormKey.Factory("000014:Skyrim.esm");
+
+string[] TriggerNames = { "Impact", "Short Fuse", "Long Fuse", "Tripwire" };
+string[] TriggerTags = { "Impact", "ShortFuse", "LongFuse", "Tripwire" };
+string[] PayloadNames = { "Frag", "Fire", "Oil", "Smoke", "Fear", "Frenzy", "Concussion" };
+string[] StrengthNames = { "Mild", "Moderate", "Major" };
+float[] Radius = { 140f, 210f, 280f };
+uint[] BaseValue = { 12, 15, 12, 12, 18, 22, 18 };  // per payload, mild impact; x strength
 
 var outDir = args.Length > 0 ? args[0] : ".";
 Directory.CreateDirectory(outDir);
@@ -46,11 +71,85 @@ var outPath = Path.Combine(outDir, PluginName);
 var modKey = ModKey.FromFileName(PluginName);
 var mod = new SkyrimMod(modKey, SkyrimRelease.SkyrimSE);
 mod.ModHeader.Author = "akeaneschmidt1998";
-mod.ModHeader.Description = "Fire Pots: throwable fire, frost, smoke and thunder pots with wind-up and arc preview (requires FirePots.dll / SKSE).";
-mod.IsSmallMaster = true;  // ESL flag: takes no load order slot
+mod.ModHeader.Description = "Fire Pots: craftable bombs (impact, fuse, tripwire; frag, fire, oil, smoke, fear, frenzy, concussion) with wind-up throws (requires FirePots.dll / SKSE).";
+mod.IsSmallMaster = true;
 FormKey Own(uint id) => new FormKey(modKey, id);
 
-// --- Shared: the invisible projectile the scrolls "cast" (so the hand plays its release) -------
+MagicEffect Mgef(uint id, string edid, string name, string desc, MagicEffectArchetype arch, MagicEffect.Flag flags)
+{
+    var m = new MagicEffect(Own(id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = edid,
+        Name = name,
+        Description = desc,
+        Flags = flags,
+        Archetype = arch,
+        CastType = CastType.FireAndForget,
+        TargetType = TargetType.Touch,
+        CastingSoundLevel = SoundLevel.Silent,
+    };
+    mod.MagicEffects.Add(m);
+    return m;
+}
+
+Effect Eff(FormKey mgef, float magnitude, int duration)
+{
+    var e = new Effect { Data = new EffectData { Magnitude = magnitude, Area = 0, Duration = duration } };
+    e.BaseEffect.SetTo(mgef);
+    return e;
+}
+
+Spell ContactSpell(uint id, string edid, string name, params Effect[] effects)
+{
+    var s = new Spell(Own(id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = edid,
+        Name = name,
+        Description = name,
+        Type = SpellType.Spell,
+        Flags = SpellDataFlag.ManualCostCalc | SpellDataFlag.NoAbsorbOrReflect,
+        CastType = CastType.FireAndForget,
+        TargetType = TargetType.Touch,
+    };
+    foreach (var e in effects) s.Effects.Add(e);
+    mod.Spells.Add(s);
+    return s;
+}
+
+Hazard MakeHazard(uint id, string edid, string name, float radius, float lifetime, FormKey spell)
+{
+    var h = new Hazard(Own(id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = edid,
+        Name = name,
+        Limit = 6,
+        Radius = radius,
+        Lifetime = lifetime,
+        TargetInterval = 1f,  // re-applies its spell every second to whoever is inside
+        Flags = Hazard.Flag.DropToGround,
+    };
+    h.Spell.SetTo(spell);
+    mod.Hazards.Add(h);
+    return h;
+}
+
+ObjectEffect Ench(uint id, string edid, string name, params Effect[] effects)
+{
+    var en = new ObjectEffect(Own(id), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = edid,
+        Name = name,
+        Flags = ObjectEffect.Flag.NoAutoCalc,
+        CastType = CastType.FireAndForget,
+        TargetType = TargetType.Touch,
+        EnchantType = ObjectEffect.EnchantTypeEnum.Enchantment,
+    };
+    foreach (var e in effects) en.Effects.Add(e);
+    mod.ObjectEffects.Add(en);
+    return en;
+}
+
+// --- Shared ---------------------------------------------------------------------------------
 var nullProjectile = new Projectile(Own(0x8F0), SkyrimRelease.SkyrimSE)
 {
     EditorID = "FP_NullProjectile",
@@ -66,197 +165,270 @@ var nullProjectile = new Projectile(Own(0x8F0), SkyrimRelease.SkyrimSE)
 nullProjectile.CollisionLayer.SetTo(L_PROJECTILE);
 mod.Projectiles.Add(nullProjectile);
 
-// --- Smoke: cloud hazard -> spell -> invisibility ----------------------------------------------
-var smokeInvis = new MagicEffect(Own(0x857), SkyrimRelease.SkyrimSE)
-{
-    EditorID = "FP_SmokeInvisibility",
-    Name = "Hidden in Smoke",
-    Description = "Hidden in the smoke.",
-    Flags = MagicEffect.Flag.NoMagnitude | MagicEffect.Flag.NoArea | MagicEffect.Flag.Recover | MagicEffect.Flag.Painless | MagicEffect.Flag.NoHitEvent,
-    Archetype = new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Invisibility),
-    CastType = CastType.FireAndForget,
-    TargetType = TargetType.Touch,
-    CastingSoundLevel = SoundLevel.Silent,
-};
-mod.MagicEffects.Add(smokeInvis);
+const MagicEffect.Flag Quiet = MagicEffect.Flag.Painless | MagicEffect.Flag.NoHitEvent | MagicEffect.Flag.NoArea;
 
-var smokeSpell = new Spell(Own(0x856), SkyrimRelease.SkyrimSE)
-{
-    EditorID = "FP_SmokeCloudSpell",
-    Name = "Smoke",
-    Description = "Hidden in the smoke.",
-    Type = SpellType.Spell,
-    Flags = SpellDataFlag.ManualCostCalc | SpellDataFlag.NoAbsorbOrReflect,
-    CastType = CastType.FireAndForget,
-    TargetType = TargetType.Touch,
-};
-var smokeSpellEffect = new Effect { Data = new EffectData { Magnitude = 0, Area = 0, Duration = 2 } };
-smokeSpellEffect.BaseEffect.SetTo(smokeInvis.FormKey);
-smokeSpell.Effects.Add(smokeSpellEffect);
-mod.Spells.Add(smokeSpell);
+// Smoke: invisibility (ends when you attack), stamina loss and no stamina regen while inside.
+var smokeInvis = Mgef(0xAA8, "FP_SmokeInvisibility", "Hidden in Smoke", "Hidden in the smoke.",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Invisibility), Quiet | MagicEffect.Flag.NoMagnitude | MagicEffect.Flag.Recover);
+var smokeChoke = Mgef(0xAA9, "FP_SmokeChoke", "Choking Smoke", "Losing stamina in the smoke.",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.Stamina },
+    Quiet | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoDuration);
+var smokeNoRegen = Mgef(0xAAA, "FP_SmokeNoRegen", "Winded", "No stamina regeneration in the smoke.",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.StaminaRate },
+    Quiet | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
+// Oil: slows anyone in the slick.
+var oilSlow = Mgef(0xAB8, "FP_OilSlow", "Oil Slick", "Slowed by the oil.",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.ValueModifier) { ActorValue = ActorValue.SpeedMult },
+    Quiet | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
+// Fear / Frenzy: magnitude = highest level affected.
+var fear = Mgef(0xAC0, "FP_BombFear", "Terrified", "Flees in terror.",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Demoralize), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea);
+fear.MagicSkill = ActorValue.Illusion;
+var frenzy = Mgef(0xAC1, "FP_BombFrenzy", "Frenzied", "Attacks anyone nearby.",
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Frenzy), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea);
+frenzy.MagicSkill = ActorValue.Illusion;
 
-var smokeCloud = new Hazard(Own(0x855), SkyrimRelease.SkyrimSE)
+// Oil fire: what FirePots.dll sets off when a fire bomb lands in an oil slick.
+var oilFireEnch = Ench(0xAC5, "FP_OilFireEnch", "Burning Oil", Eff(EnchFireDamageFFContact, 25f, 0));
+var oilFire = new Explosion(Own(0xAC4), SkyrimRelease.SkyrimSE)
 {
-    EditorID = "FP_SmokeCloud",
-    Name = "Smoke",
-    Limit = 4,
+    EditorID = "FP_OilFireExplosion",
+    Name = "Burning Oil",
+    Force = 0f,
+    Damage = 0f,
     Radius = 250f,
-    Lifetime = 20f,
-    TargetInterval = 1f,  // re-applies the 2 s invisibility every second while you're inside
-    Flags = Hazard.Flag.DropToGround,
+    ISRadius = 0f,
+    VerticalOffsetMult = 0f,
+    Flags = 0,
+    SoundLevel = SoundLevel.Normal,
 };
-smokeCloud.Spell.SetTo(smokeSpell.FormKey);
-mod.Hazards.Add(smokeCloud);
-
-// --- Thunder: fear effect ------------------------------------------------------------------------
-var thunderFear = new MagicEffect(Own(0x864), SkyrimRelease.SkyrimSE)
+oilFire.ObjectEffect.SetTo(oilFireEnch.FormKey);
+oilFire.Sound1.SetTo(TRPOilIgniteLowSD);
+oilFire.ImpactDataSet.SetTo(ScorchImpact);
+oilFire.PlacedObject.SetTo(FireLgLong);
+mod.Explosions.Add(oilFire);
+var oilFireProjectile = new Projectile(Own(0xAC6), SkyrimRelease.SkyrimSE)
 {
-    EditorID = "FP_ThunderFear",
-    Name = "Thunderstruck",
-    Description = "Flees in terror.",
-    Flags = MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea,
-    MagicSkill = ActorValue.Illusion,
-    Archetype = new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Demoralize),
-    CastType = CastType.FireAndForget,
-    TargetType = TargetType.Touch,
-    CastingSoundLevel = SoundLevel.Loud,
+    EditorID = "FP_OilFireProjectile",
+    Type = Projectile.TypeEnum.Missile,
+    Flags = Projectile.Flag.Explosion,
+    Gravity = 1f,
+    Speed = 200f,
+    Range = 1000f,
+    CollisionRadius = 4f,
+    Lifetime = 2f,
+    SoundLevel = (uint)SoundLevel.Silent,
 };
-mod.MagicEffects.Add(thunderFear);
+oilFireProjectile.Explosion.SetTo(oilFire.FormKey);
+oilFireProjectile.CollisionLayer.SetTo(L_PROJECTILE);
+mod.Projectiles.Add(oilFireProjectile);
 
-// --- Pot types. Fixed form IDs: FirePots.dll looks these up, so they must never move. -----------
-var types = new[]
+// --- Payload explosions (per strength) ---------------------------------------------------------
+var explosions = new Explosion[7, 3];
+for (var p = 0; p < 7; p++)
 {
-    new PotType("Fire", "Fire Pot", BaseId: 0x800, ItemId: 0x820, EffectId: 0x840, Value: 15,
-        Description: "A clay vessel of something flammable. Shatters in a burst of flame and leaves the ground burning.",
-        Keyword: Sk(0x01CEAD),                                    // MagicDamageFire
-        Burst: (Sk(0x04605A), 30f, 0),                            // EnchFireDamageFFContact
-        Sound2: Sk(0x042526), ImpactSet: Sk(0x01C2AF),            // oil ignite; scorch
-        Placed: Sk(0x03E074),                                     // FireSmLongHazard
-        Flash: null, AiSound: SoundLevel.Silent),
-    new PotType("Frost", "Frost Pot", BaseId: 0x810, ItemId: 0x830, EffectId: 0x841, Value: 20,
-        Description: "A clay vessel packed with frost. Shatters in a burst of cold that saps stamina.",
-        Keyword: Sk(0x01CEAE),                                    // MagicDamageFrost
-        Burst: (Sk(0x04605B), 30f, 0),                            // EnchFrostDamageFFContact
-        Sound2: Sk(0x023992), ImpactSet: Sk(0x018A2E),            // ice explosion; frost decal
-        Placed: null, Flash: null, AiSound: SoundLevel.Silent),
-    new PotType("Smoke", "Smoke Pot", BaseId: 0x850, ItemId: 0x858, EffectId: 0x842, Value: 15,
-        Description: "A jar of smouldering filler. Shatters into a lingering cloud; anyone inside is hidden until they strike.",
-        Keyword: null, Burst: null,
-        Sound2: null, ImpactSet: null,                            // just the shatter
-        Placed: smokeCloud.FormKey, Flash: null, AiSound: SoundLevel.Silent),
-    new PotType("Thunder", "Thunder Pot", BaseId: 0x860, ItemId: 0x868, EffectId: 0x843, Value: 25,
-        Description: "A sealed jar of volatile salts. Bursts in a blinding flash and a thunderclap that sends the weak-willed fleeing.",
-        Keyword: null,
-        Burst: (thunderFear.FormKey, 25f, 10),                    // up to level 25, 10 s
-        Sound2: Sk(0x0A0F52), ImpactSet: Sk(0x038B05),            // Unrelenting Force thunder; shock scorch
-        Placed: null,
-        Flash: (Sk(0x07E8FD), 700f),                              // alduinExplosionFlashImod within 700 units
-        AiSound: SoundLevel.Loud),
-};
-
-foreach (var t in types)
-{
-    // the scroll's effect: casting it plays the release animation and launches FP_NullProjectile
-    var potEffect = new MagicEffect(Own(t.EffectId), SkyrimRelease.SkyrimSE)
+    for (var s = 0; s < 3; s++)
     {
-        EditorID = $"FP_{t.Tag}PotEffect",
-        Name = t.Name,
-        Description = t.Description,
-        Flags = MagicEffect.Flag.HideInUI | MagicEffect.Flag.NoDuration | MagicEffect.Flag.NoMagnitude |
-                MagicEffect.Flag.NoArea | MagicEffect.Flag.NoHitEvent | MagicEffect.Flag.Painless,
-        Archetype = new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Script),
-        CastType = CastType.FireAndForget,
-        TargetType = TargetType.Aimed,
-        CastingSoundLevel = SoundLevel.Silent,
-    };
-    potEffect.Projectile.SetTo(nullProjectile.FormKey);
-    mod.MagicEffects.Add(potEffect);
-
-    ObjectEffect? burst = null;
-    if (t.Burst is { } b)
-    {
-        burst = new ObjectEffect(Own(t.BaseId + 3), SkyrimRelease.SkyrimSE)
+        var mult = s + 1;
+        var tag = $"{StrengthNames[s]}{PayloadNames[p]}";
+        var e = new Explosion(Own((uint)(0xA60 + p * 3 + s)), SkyrimRelease.SkyrimSE)
         {
-            EditorID = $"FP_{t.Tag}PotBurstEnch",
-            Name = $"{t.Name} Burst",
-            Flags = ObjectEffect.Flag.NoAutoCalc,
-            CastType = CastType.FireAndForget,
-            TargetType = TargetType.Touch,
-            EnchantType = ObjectEffect.EnchantTypeEnum.Enchantment,
+            EditorID = $"FP_{tag}Explosion",
+            Name = $"{StrengthNames[s]} {PayloadNames[p]} Bomb",
+            Force = 0f,
+            Damage = 0f,
+            Radius = Radius[s],
+            ISRadius = 0f,
+            VerticalOffsetMult = 0f,
+            Flags = 0,
+            SoundLevel = SoundLevel.Silent,
         };
-        var effect = new Effect { Data = new EffectData { Magnitude = b.Magnitude, Area = 0, Duration = b.Duration } };
-        effect.BaseEffect.SetTo(b.Effect);
-        burst.Effects.Add(effect);
-        mod.ObjectEffects.Add(burst);
+        e.Sound1.SetTo(TRPOilLampBreak);
+        FormKey? ench = null;
+        switch (p)
+        {
+            case 0:  // Frag: physical damage and a shove
+                e.Damage = 25f * mult;
+                e.Force = 40f * mult;
+                e.SoundLevel = SoundLevel.Normal;
+                e.Sound2.SetTo(FXExplosionCatapultNear);
+                e.ImpactDataSet.SetTo(ScorchImpact);
+                break;
+            case 1:  // Fire: fire burst + burning ground
+                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Fire Burst", Eff(EnchFireDamageFFContact, 20f * mult, 0)).FormKey;
+                e.Force = 20f;
+                e.Sound2.SetTo(TRPOilIgniteLowSD);
+                e.ImpactDataSet.SetTo(ScorchImpact);
+                e.PlacedObject.SetTo(s == 0 ? FireSmLong : s == 1 ? FireLgShort : FireLgLong);
+                break;
+            case 2:  // Oil: a slick that slows (and burns when a fire bomb lands in it)
+            {
+                var spell = ContactSpell((uint)(0xAB4 + s), $"FP_{tag}SlickSpell", "Oil Slick", Eff(oilSlow.FormKey, 20f + 15f * s, 2));
+                var slick = MakeHazard((uint)(0xAB0 + s), $"FP_{tag}Slick", "Oil Slick", 120f + 60f * s, 60f, spell.FormKey);
+                e.ImpactDataSet.SetTo(ScorchImpact);  // dark stain
+                e.PlacedObject.SetTo(slick.FormKey);
+                break;
+            }
+            case 3:  // Smoke: cloud; inside: invisible, losing stamina, no stamina regen
+            {
+                var spell = ContactSpell((uint)(0xAA4 + s), $"FP_{tag}CloudSpell", "Smoke",
+                    Eff(smokeInvis.FormKey, 0f, 2), Eff(smokeChoke.FormKey, 4f + 4f * s, 0), Eff(smokeNoRegen.FormKey, 100f, 2));
+                var cloud = MakeHazard((uint)(0xAA0 + s), $"FP_{tag}Cloud", "Smoke", 200f + 100f * s, 15f + 7.5f * s, spell.FormKey);
+                e.PlacedObject.SetTo(cloud.FormKey);
+                break;
+            }
+            case 4:  // Fear: flash + everyone up to the level flees
+                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Terror", Eff(fear.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
+                e.ImageSpaceModifier.SetTo(FlashImod);
+                e.ISRadius = 300f + 200f * s;
+                e.Sound2.SetTo(ThunderA);
+                e.ImpactDataSet.SetTo(ShockImpact);
+                break;
+            case 5:  // Frenzy: everyone up to the level attacks whoever is nearest
+                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Frenzy", Eff(frenzy.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
+                e.Sound2.SetTo(FXExplosionIceSD);
+                break;
+            case 6:  // Concussion: wide stagger, very loud
+                ench = Ench((uint)(0xA80 + p * 3 + s), $"FP_{tag}Ench", "Concussion", Eff(StaggerAttackFFContact, 0.5f + 0.25f * s, 0)).FormKey;
+                e.Radius = Radius[s] * 1.75f;
+                e.Force = 60f * mult;
+                e.SoundLevel = SoundLevel.VeryLoud;
+                e.Sound2.SetTo(FXExplosionCatapultNear);
+                e.ImageSpaceModifier.SetTo(PushImod);
+                e.ISRadius = e.Radius * 1.5f;
+                break;
+        }
+        if (ench is { } en) e.ObjectEffect.SetTo(en);
+        mod.Explosions.Add(e);
+        explosions[p, s] = e;
     }
-
-    var explosion = new Explosion(Own(t.BaseId + 2), SkyrimRelease.SkyrimSE)
-    {
-        EditorID = $"FP_{t.Tag}PotExplosion",
-        Name = t.Name,
-        Force = t.Tag is "Fire" or "Frost" ? 30f : 0f,
-        Damage = t.Tag is "Fire" or "Frost" ? 5f : 0f,
-        Radius = BlastRadius,
-        ISRadius = t.Flash?.Radius ?? 0f,
-        VerticalOffsetMult = 0f,
-        Flags = 0,
-        SoundLevel = t.AiSound,  // how far AI "hears" it; its own sounds always play
-    };
-    if (burst is not null) explosion.ObjectEffect.SetTo(burst.FormKey);
-    explosion.Sound1.SetTo(TRPOilLampBreak);
-    if (t.Sound2 is { } s2) explosion.Sound2.SetTo(s2);
-    if (t.ImpactSet is { } imp) explosion.ImpactDataSet.SetTo(imp);
-    if (t.Placed is { } placed) explosion.PlacedObject.SetTo(placed);
-    if (t.Flash is { } flash) explosion.ImageSpaceModifier.SetTo(flash.Imod);
-    mod.Explosions.Add(explosion);
-
-    // Missile + Gravity: ballistic arc, explodes on the first thing it touches.
-    // Speed is overwritten by FirePots.dll on every throw (wind-up); Gravity 1 = normal gravity.
-    var projectile = new Projectile(Own(t.BaseId + 1), SkyrimRelease.SkyrimSE)
-    {
-        EditorID = $"FP_{t.Tag}PotProjectile",
-        Name = t.Name,
-        Type = Projectile.TypeEnum.Missile,
-        Flags = Projectile.Flag.Explosion,
-        Gravity = 1.0f,
-        Speed = 1000f,
-        Range = 30000f,
-        CollisionRadius = 8f,
-        Lifetime = 10f,
-        ImpactForce = 0f,
-        SoundLevel = (uint)SoundLevel.Silent,
-    };
-    projectile.Explosion.SetTo(explosion.FormKey);
-    projectile.CollisionLayer.SetTo(L_PROJECTILE);
-    mod.Projectiles.Add(projectile);
-
-    var keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>
-    {
-        VendorItemScroll.ToLink<IKeywordGetter>(),
-        VendorItemPotion.ToLink<IKeywordGetter>(),
-    };
-    if (t.Keyword is { } kw) keywords.Add(kw.ToLink<IKeywordGetter>());
-    var pot = new Scroll(Own(t.ItemId), SkyrimRelease.SkyrimSE)
-    {
-        EditorID = $"FP_{t.Tag}Pot",
-        Name = t.Name,
-        Description = t.Description,
-        Value = t.Value,
-        Weight = 1.0f,
-        Keywords = keywords,
-        BaseCost = 0,
-        Flags = SpellDataFlag.ManualCostCalc | SpellDataFlag.NoDualCastModification,
-        Type = (SpellType)13,  // scroll
-        ChargeTime = 0.3f,     // the hand comes up into its wind-up pose quickly; the throw is the release
-        CastType = CastType.FireAndForget,
-        TargetType = TargetType.Aimed,
-    };
-    pot.EquipmentType.SetTo(EitherHand);
-    var potSpellEffect = new Effect { Data = new EffectData { Magnitude = 0, Area = 0, Duration = 0 } };
-    potSpellEffect.BaseEffect.SetTo(potEffect.FormKey);
-    pot.Effects.Add(potSpellEffect);
-    mod.Scrolls.Add(pot);
 }
+
+// --- Bombs ---------------------------------------------------------------------------------
+string Describe(int t, int p, int s)
+{
+    var what = p switch
+    {
+        0 => "a burst of shrapnel",
+        1 => "a burst of flame that leaves the ground burning",
+        2 => "a slick of oil that slows anyone in it and burns when a fire bomb lands in it",
+        3 => "a lingering cloud that hides anyone inside until they strike, but chokes their stamina",
+        4 => $"a blinding flash that sends anyone up to level {10 * (s + 1)} fleeing",
+        5 => $"a cloud that drives anyone up to level {10 * (s + 1)} into a frenzy",
+        _ => "a deafening blast that staggers everyone around it",
+    };
+    var how = t switch
+    {
+        0 => "Shatters on impact into",
+        1 => "Bursts a moment after landing into",
+        2 => "Bursts a few seconds after landing into",
+        _ => "Set it down; when someone comes close it bursts into",
+    };
+    return $"{how} {what}.";
+}
+
+for (var t = 0; t < 4; t++)
+{
+    for (var p = 0; p < 7; p++)
+    {
+        for (var s = 0; s < 3; s++)
+        {
+            var i = (uint)((t * 7 + p) * 3 + s);
+            var name = $"{StrengthNames[s]} {PayloadNames[p]} Bomb ({TriggerNames[t]})";
+            var tag = $"{StrengthNames[s]}{PayloadNames[p]}{TriggerTags[t]}";
+            var desc = Describe(t, p, s);
+
+            var projectile = new Projectile(Own(0xA00 + i), SkyrimRelease.SkyrimSE)
+            {
+                EditorID = $"FP_{tag}Projectile",
+                Name = name,
+                Gravity = 1.0f,
+                Speed = 600f,  // overwritten by FirePots.dll on every throw (wind-up)
+                Range = 30000f,
+                CollisionRadius = 8f,
+                Lifetime = t == 3 ? 900f : 30f,
+                ImpactForce = 0f,
+                SoundLevel = (uint)SoundLevel.Silent,
+            };
+            if (t == 0)
+            {
+                projectile.Type = Projectile.TypeEnum.Missile;
+                projectile.Flags = Projectile.Flag.Explosion;
+            }
+            else
+            {
+                // bouncing "lobber" that goes off on its timer (fuse) or when someone comes close (tripwire)
+                projectile.Type = Projectile.TypeEnum.Lobber;
+                projectile.Flags = Projectile.Flag.Explosion | Projectile.Flag.AltTrigger;
+                projectile.ExplosionAltTriggerTimer = t == 1 ? 1.5f : t == 2 ? 4f : 900f;
+                projectile.ExplosionAltTriggerProximity = t == 3 ? 120f : 0f;
+            }
+            projectile.Explosion.SetTo(explosions[p, s].FormKey);
+            projectile.CollisionLayer.SetTo(L_PROJECTILE);
+            mod.Projectiles.Add(projectile);
+
+            var itemEffect = new MagicEffect(Own(0x960 + i), SkyrimRelease.SkyrimSE)
+            {
+                EditorID = $"FP_{tag}Effect",
+                Name = name,
+                Description = desc,
+                Flags = MagicEffect.Flag.HideInUI | MagicEffect.Flag.NoDuration | MagicEffect.Flag.NoMagnitude |
+                        MagicEffect.Flag.NoArea | MagicEffect.Flag.NoHitEvent | MagicEffect.Flag.Painless,
+                Archetype = new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Script),
+                CastType = CastType.FireAndForget,
+                TargetType = TargetType.Aimed,
+                CastingSoundLevel = SoundLevel.Silent,
+            };
+            itemEffect.Projectile.SetTo(nullProjectile.FormKey);
+            mod.MagicEffects.Add(itemEffect);
+
+            var bomb = new Scroll(Own(0x900 + i), SkyrimRelease.SkyrimSE)
+            {
+                EditorID = $"FP_{tag}",
+                Name = name,
+                Description = desc,
+                Value = BaseValue[p] * (uint)(s + 1) + (t == 0 ? 0u : t == 3 ? 6u : 3u),
+                Weight = 1.0f,
+                Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>
+                {
+                    VendorItemScroll.ToLink<IKeywordGetter>(),
+                    VendorItemPotion.ToLink<IKeywordGetter>(),
+                },
+                BaseCost = 0,
+                Flags = SpellDataFlag.ManualCostCalc | SpellDataFlag.NoDualCastModification,
+                Type = (SpellType)13,  // scroll
+                ChargeTime = 0.3f,     // the hand comes up into its wind-up pose quickly; the throw is the release
+                CastType = CastType.FireAndForget,
+                TargetType = TargetType.Aimed,
+            };
+            bomb.EquipmentType.SetTo(EitherHand);
+            bomb.Effects.Add(Eff(itemEffect.FormKey, 0f, 0));
+            mod.Scrolls.Add(bomb);
+        }
+    }
+}
+
+// --- MCM quest (same setup as DaggerfallCombat: MCM Helper reads the menu from config.json) ----
+var quest = new Quest(Own(0xB00), SkyrimRelease.SkyrimSE)
+{
+    EditorID = "FirePots_MCM",
+    Name = "Fire Pots MCM",
+    Flags = Quest.Flag.StartGameEnabled,
+    Priority = 0,
+    Type = Quest.TypeEnum.None,
+    NextAliasID = 1,
+};
+var alias = new QuestAlias { ID = 0, Type = QuestAlias.TypeEnum.Reference, Name = "PlayerAlias" };
+alias.ForcedReference.SetTo(playerRef);
+quest.Aliases.Add(alias);
+var vmad = new QuestAdapter();
+vmad.Scripts.Add(new ScriptEntry { Name = "FirePots_MCM" });
+var aliasScripts = new QuestFragmentAlias { Property = new ScriptObjectProperty { Alias = 0 } };
+aliasScripts.Property.Object.SetTo(quest.FormKey);
+aliasScripts.Scripts.Add(new ScriptEntry { Name = "SKI_PlayerLoadGameAlias" });
+vmad.Aliases.Add(aliasScripts);
+quest.VirtualMachineAdapter = vmad;
+mod.Quests.Add(quest);
 
 mod.BeginWrite
     .ToPath(outPath)
@@ -280,39 +452,43 @@ Require(check.IsSmallMaster, "plugin is ESL-flagged");
 var masters = check.ModHeader.MasterReferences.Select(m => m.Master).ToList();
 Require(masters.SequenceEqual(new[] { skyrim }), $"only master is Skyrim.esm (got {string.Join(", ", masters)})");
 Require(!check.ConstructibleObjects.Any() && !check.MiscItems.Any(), "no recipes or misc items");
-Require(check.Projectiles.Any(p => p.FormKey.ID == 0x8F0 && !p.Flags.HasFlag(Projectile.Flag.Explosion)), "null projectile does nothing");
+Require(check.Scrolls.Count() == 84, $"84 bombs (got {check.Scrolls.Count()})");
+var maxId = check.EnumerateMajorRecords().Max(r => r.FormKey.ID);
+Require(maxId <= 0xFFF, $"all IDs fit an ESL (max {maxId:X})");
 
-foreach (var t in types)
+for (var t = 0; t < 4; t++)
 {
-    var pot = check.Scrolls.Single(m => m.FormKey.ID == t.ItemId);
-    Require(pot.Name?.String == t.Name, $"{t.Name} item");
-    Require((int)pot.Type == 13 && pot.EquipmentType.FormKey == EitherHand, $"{t.Name} is an either-hand scroll");
-    Require(pot.Effects.Count == 1 && pot.Effects[0].BaseEffect.FormKey.ID == t.EffectId, $"{t.Name} scroll effect");
-    var me = check.MagicEffects.Single(x => x.FormKey.ID == t.EffectId);
-    Require(me.Archetype is IMagicEffectArchetypeGetter arch && arch.Type == MagicEffectArchetype.TypeEnum.Script, $"{t.Name} effect does nothing itself");
-    Require(me.Projectile.FormKey.ID == 0x8F0, $"{t.Name} effect casts the null projectile");
-
-    var p = check.Projectiles.Single(x => x.FormKey.ID == t.BaseId + 1);
-    Require(p.Type == Projectile.TypeEnum.Missile && p.Flags.HasFlag(Projectile.Flag.Explosion) && p.Gravity > 0.5f, $"{t.Name} projectile is an exploding missile with gravity");
-    Require(p.Explosion.FormKey.ID == t.BaseId + 2, $"{t.Name} projectile -> explosion");
-
-    var e = check.Explosions.Single(x => x.FormKey.ID == t.BaseId + 2);
-    Require(t.Burst is null ? e.ObjectEffect.IsNull : e.ObjectEffect.FormKey.ID == t.BaseId + 3, $"{t.Name} explosion -> burst");
-    Require(t.Placed is null ? e.PlacedObject.IsNull : e.PlacedObject.FormKey == t.Placed, $"{t.Name} explosion placed object");
-    Require(e.SoundLevel == t.AiSound, $"{t.Name} explosion AI sound level");
-    if (t.Flash is { } f) Require(e.ImageSpaceModifier.FormKey == f.Imod && e.ISRadius > 0, $"{t.Name} flash");
+    for (var p = 0; p < 7; p++)
+    {
+        for (var s = 0; s < 3; s++)
+        {
+            var i = (uint)((t * 7 + p) * 3 + s);
+            var bomb = check.Scrolls.Single(x => x.FormKey.ID == 0x900 + i);
+            Require(bomb.Name?.String == $"{StrengthNames[s]} {PayloadNames[p]} Bomb ({TriggerNames[t]})", $"bomb {i:X} name");
+            Require((int)bomb.Type == 13 && bomb.EquipmentType.FormKey == EitherHand, $"bomb {i:X} is an either-hand scroll");
+            Require(bomb.Effects.Count == 1 && bomb.Effects[0].BaseEffect.FormKey.ID == 0x960 + i, $"bomb {i:X} effect");
+            var proj = check.Projectiles.Single(x => x.FormKey.ID == 0xA00 + i);
+            Require(proj.Explosion.FormKey.ID == 0xA60 + p * 3 + s, $"bomb {i:X} projectile -> explosion");
+            Require(t == 0 ? proj.Type == Projectile.TypeEnum.Missile && !proj.Flags.HasFlag(Projectile.Flag.AltTrigger)
+                           : proj.Type == Projectile.TypeEnum.Lobber && proj.Flags.HasFlag(Projectile.Flag.AltTrigger), $"bomb {i:X} trigger");
+            if (t == 3) Require(proj.ExplosionAltTriggerProximity > 50f, $"bomb {i:X} tripwire proximity");
+        }
+    }
 }
-
-var cloud = check.Hazards.Single(h => h.FormKey.ID == 0x855);
-Require(cloud.Spell.FormKey.ID == 0x856 && cloud.Lifetime >= 10f, "smoke cloud lingers and applies its spell");
-var invis = check.MagicEffects.Single(x => x.FormKey.ID == 0x857);
-Require(invis.Archetype is IMagicEffectArchetypeGetter ia && ia.Type == MagicEffectArchetype.TypeEnum.Invisibility, "smoke gives invisibility");
-var fear = check.MagicEffects.Single(x => x.FormKey.ID == 0x864);
-Require(fear.Archetype is IMagicEffectArchetypeGetter fa && fa.Type == MagicEffectArchetype.TypeEnum.Demoralize, "thunder causes fear");
+for (var p = 0; p < 7; p++)
+{
+    for (var s = 0; s < 3; s++)
+    {
+        var e = check.Explosions.Single(x => x.FormKey.ID == 0xA60 + p * 3 + s);
+        Require(e.Radius >= Radius[s], $"{PayloadNames[p]} {StrengthNames[s]} radius");
+        Require(p != 6 || e.SoundLevel == SoundLevel.VeryLoud, "concussion is very loud");
+        Require(p != 3 || check.Hazards.Any(h => h.FormKey == e.PlacedObject.FormKey && h.Lifetime >= 15f), "smoke lingers");
+        Require(p != 2 || check.Hazards.Any(h => h.FormKey == e.PlacedObject.FormKey), "oil leaves a slick");
+    }
+}
+var q = check.Quests.Single();
+Require(q.EditorID == "FirePots_MCM" && q.Flags.HasFlag(Quest.Flag.StartGameEnabled), "MCM quest");
+Require(q.VirtualMachineAdapter?.Scripts.Single().Name == "FirePots_MCM", "MCM quest script");
 
 Console.WriteLine($"Wrote and verified {outPath} ({new FileInfo(outPath).Length} bytes): " +
-                  $"{types.Length} pot types, masters {string.Join(", ", masters)}");
-
-record PotType(string Tag, string Name, uint BaseId, uint ItemId, uint EffectId, uint Value, string Description,
-    FormKey? Keyword, (FormKey Effect, float Magnitude, int Duration)? Burst, FormKey? Sound2, FormKey? ImpactSet,
-    FormKey? Placed, (FormKey Imod, float Radius)? Flash, SoundLevel AiSound);
+                  $"{check.Scrolls.Count()} bombs, {check.Explosions.Count()} explosions, {check.Hazards.Count()} hazards, max ID {maxId:X}");
