@@ -19,6 +19,12 @@ namespace
 		RE::SendHUDMessage::ShowHUDMessage(a_msg.c_str());
 	}
 
+	bool HasName(const RE::TESForm* a_form)
+	{
+		const char* n = a_form ? a_form->GetName() : nullptr;
+		return n && *n;
+	}
+
 	std::string NameOf(const RE::TESForm* a_form)
 	{
 		const char* n = a_form ? a_form->GetName() : nullptr;
@@ -73,8 +79,8 @@ namespace
 		for (const auto& ref : Config::containers) {
 			auto* form = Forms::Lookup(ref);
 			auto* obj = form ? form->As<RE::TESBoundObject>() : nullptr;
-			if (!obj) {
-				continue;
+			if (!obj || !HasName(obj)) {
+				continue;  // nameless items can't be picked up, so never carried
 			}
 			const auto name = NameOf(obj);
 			auto       it = std::ranges::find(out, name, &ContainerGroup::name);
@@ -87,17 +93,29 @@ namespace
 		return out;
 	}
 
-	std::vector<Filling> AllFillings()
+	std::vector<Filling> AllFillings(int a_type)
 	{
 		std::vector<Filling> out;
 		const auto&          types = Forms::Types();
 		for (const auto& f : Config::fillings) {
-			if (f.type < 0 || static_cast<std::size_t>(f.type) >= types.size() || !types[f.type].Ready()) {
+			if (f.type != a_type || static_cast<std::size_t>(f.type) >= types.size() || !types[f.type].Ready()) {
 				continue;
 			}
 			auto* form = Forms::Lookup(f.form);
-			if (auto* obj = form ? form->As<RE::TESBoundObject>() : nullptr) {
+			if (auto* obj = form ? form->As<RE::TESBoundObject>() : nullptr; obj && HasName(obj)) {
 				out.push_back({ obj, f.count, f.type });
+			}
+		}
+		return out;
+	}
+
+	std::vector<int> ReadyTypes()
+	{
+		std::vector<int> out;
+		const auto&      types = Forms::Types();
+		for (std::size_t i = 0; i < types.size(); ++i) {
+			if (types[i].Ready()) {
+				out.push_back(static_cast<int>(i));
 			}
 		}
 		return out;
@@ -200,8 +218,9 @@ namespace
 	}
 
 	// --- The three steps ------------------------------------------------------------------
-	void ChooseContainer();
-	void ChooseFilling(const ContainerGroup& a_container);
+	void ChooseType();
+	void ChooseContainer(int a_type);
+	void ChooseFilling(int a_type, const ContainerGroup& a_container);
 	void ChooseAmount(const ContainerGroup& a_container, const Filling& a_filling);
 
 	void Make(const ContainerGroup& a_container, const Filling& a_filling, int a_wanted)
@@ -267,7 +286,7 @@ namespace
 		}
 		box->onPick = [a_container, a_filling, amounts](int i) {
 			if (i < 0) {
-				ChooseFilling(a_container);
+				ChooseFilling(a_filling.type, a_container);
 			} else {
 				Make(a_container, a_filling, amounts[i]);
 			}
@@ -275,30 +294,30 @@ namespace
 		Show(box);
 	}
 
-	void ChooseFilling(const ContainerGroup& a_container)
+	void ChooseFilling(int a_type, const ContainerGroup& a_container)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
 			return;
 		}
 		const auto inv = Inventory(player);
-		auto       fills = AllFillings();
+		auto       fills = AllFillings(a_type);
 		UsableFirst(fills, [&](const Filling& f) { return Have(inv, f.form) >= f.per; });
 
 		auto box = std::make_shared<ListBox>();
 		const int haveC = a_container.Have(inv);
-		box->title = haveC > 0 ? fmt::format("Fill the {} with...", a_container.name) :
-		                         fmt::format("Fill the {} with... (you have none)", a_container.name);
+		const auto& pot = Forms::Types()[a_type].name;
+		box->title = haveC > 0 ? fmt::format("{}: fill the {} with...", pot, a_container.name) :
+		                         fmt::format("{}: fill the {} with... (you have none)", pot, a_container.name);
 		for (const auto& f : fills) {
-			const auto& pot = Forms::Types()[f.type].name;
-			const int   have = Have(inv, f.form);
-			const auto  qty = f.per == 1 ? fmt::format("({})", have) : fmt::format("x{} ({})", f.per, have);
-			box->entries.push_back(fmt::format("{} {} - {}", NameOf(f.form), qty, pot));
+			const int  have = Have(inv, f.form);
+			const auto qty = f.per == 1 ? fmt::format("({})", have) : fmt::format("x{} ({})", f.per, have);
+			box->entries.push_back(fmt::format("{} {}", NameOf(f.form), qty));
 		}
 		box->back = true;
-		box->onPick = [a_container, fills](int i) {
+		box->onPick = [a_type, a_container, fills](int i) {
 			if (i < 0) {
-				ChooseContainer();
+				ChooseContainer(a_type);
 			} else {
 				ChooseAmount(a_container, fills[i]);
 			}
@@ -306,7 +325,7 @@ namespace
 		Show(box);
 	}
 
-	void ChooseContainer()
+	void ChooseContainer(int a_type)
 	{
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!player) {
@@ -321,13 +340,52 @@ namespace
 		UsableFirst(containers, [&](const ContainerGroup& c) { return c.Have(inv) > 0; });
 
 		auto box = std::make_shared<ListBox>();
-		box->title = "Make a pot: choose a container";
+		box->title = fmt::format("Make a {}: choose a container", Forms::Types()[a_type].name);
 		for (const auto& c : containers) {
 			box->entries.push_back(fmt::format("{} ({})", c.name, c.Have(inv)));
 		}
-		box->onPick = [containers](int i) {
+		box->back = ReadyTypes().size() > 1;
+		box->onPick = [a_type, containers](int i) {
+			if (i < 0) {
+				ChooseType();
+			} else {
+				ChooseFilling(a_type, containers[i]);
+			}
+		};
+		Show(box);
+	}
+
+	// Step 0: which pot. Each shows how many you could make right now.
+	void ChooseType()
+	{
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		if (!player) {
+			return;
+		}
+		const auto types = ReadyTypes();
+		if (types.size() == 1) {
+			ChooseContainer(types.front());
+			return;
+		}
+		const auto inv = Inventory(player);
+		int        containers = 0;
+		for (const auto& c : AllContainers()) {
+			containers += c.Have(inv);
+		}
+		auto box = std::make_shared<ListBox>();
+		box->title = "Make a pot: which kind?";
+		for (const int t : types) {
+			int fills = 0;  // pots' worth of filling
+			for (const auto& f : AllFillings(t)) {
+				fills += Have(inv, f.form) / f.per;
+			}
+			const int can = (std::min)(containers, fills);
+			box->entries.push_back(can > 0 ? fmt::format("{} (can make {})", Forms::Types()[t].name, can) :
+			                                 fmt::format("{}", Forms::Types()[t].name));
+		}
+		box->onPick = [types](int i) {
 			if (i >= 0) {
-				ChooseFilling(containers[i]);
+				ChooseContainer(types[i]);
 			}
 		};
 		Show(box);
@@ -346,6 +404,6 @@ namespace Crafting
 			Notify("You can't make pots in combat.");
 			return;
 		}
-		ChooseContainer();
+		ChooseType();
 	}
 }

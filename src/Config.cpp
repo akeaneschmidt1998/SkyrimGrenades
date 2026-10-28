@@ -137,7 +137,6 @@ namespace Config
 				"Skyrim.esm|0B9BDE", "Skyrim.esm|0B9BD6", "Skyrim.esm|0F08F3", "Skyrim.esm|0F08F1",  // jugs
 				"Skyrim.esm|08632C",                                                                // glazed jug
 				"Skyrim.esm|0B9BD2", "Skyrim.esm|0B9BD4", "Skyrim.esm|0F08F6", "Skyrim.esm|0F08F7",  // pots
-				"Skyrim.esm|08632A",                                                                // glazed urn
 			};
 		}
 		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 0; })) {

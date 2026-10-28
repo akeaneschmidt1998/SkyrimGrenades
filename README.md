@@ -28,12 +28,13 @@ thing it touches.
 
 ## Making pots
 
-**Press H anywhere** (outside menus and dialogue) to make pots. Three short menus:
+**Press H anywhere** (outside menus and dialogue) to make pots. A few short menus:
 
-1. **Choose a container**: every container, with how many you carry (the ones you have first).
-2. **Choose a filling**: every filling, with how many you carry and which pot it makes,
-   e.g. `Fire Salts (4) - Fire Pot` or `Charred Skeever Hide x2 (5) - Fire Pot`.
-3. **How many**: 1, 5 or All (skipped when you can only make one). If you can't make any, it
+1. **Choose the pot**: Fire Pot or Frost Pot, with how many you could make right now.
+2. **Choose a container**: every container, with how many you carry (the ones you have first).
+3. **Choose a filling**: only the fillings for that pot, with how many you carry,
+   e.g. `Fire Salts (4)` or `Charred Skeever Hide x2 (5)`.
+4. **How many**: 1, 5 or All (skipped when you can only make one). If you can't make any, it
    says what one takes and what you're missing.
 
 It always opens, even with nothing usable, so it's also the list of what pots can be made from.
@@ -50,7 +51,7 @@ cooking pot.
 |---|---|---|
 | Empty wine bottles (all four vanilla ones, the spiced wine bottle, Dawnguard's two) | Fire Salts, Dwarven Oil, Troll Fat (1 each) | Frost Salts, Ice Wraith Teeth (1 each) |
 | Clay and Nordic jugs, small and large; glazed jug | Charred Skeever Hide, Spriggan Sap (2 each) | |
-| Glazed and Nordic pots; glazed urn | Ash Creep Cluster, Ash Hopper Jelly, Burnt Spriggan Wood, Spawn Ash (2 each, Dragonborn) | |
+| Glazed and Nordic pots | Ash Creep Cluster, Ash Hopper Jelly, Burnt Spriggan Wood, Spawn Ash (2 each, Dragonborn) | |
 
 Both lists live in `FirePots.ini` (`[Containers]`, `[Fillings]`), so adding a modded bottle or a
 new filling is one line.
@@ -123,9 +124,10 @@ Each step adds one thing. Log: `Documents/My Games/Skyrim Special Edition/SKSE/F
 
 **B. Wind-up and arc**
 2. With no pots, press G: "You have no Fire Pots or Frost Pots."
-   With nothing, press H: the menu still opens with every container at (0); pick one and every
-   filling is listed; pick one and it says what a pot takes. With an empty wine bottle and 3 Fire
-   Salts: pick the bottle, then the salts, choose 1: one Fire Pot, one bottle and one salt gone.
+   With nothing, press H: the menu still opens; pick Fire Pot, then a container (all at (0)), and
+   only fire fillings are listed; pick one and it says what a pot takes. With an empty wine bottle
+   and 3 Fire Salts: Fire Pot (can make 1), the bottle, the salts: one Fire Pot, one bottle and one
+   salt gone. No container shows up as a hex number.
    Drink a wine: an Empty Wine Bottle appears (the log lists every drink -> bottle pair).
 3. Add 10 pots. Hold G: the meter fills over about a second and an arc leaves your left hand.
    Look around while holding: the arc and ring follow. Aim at a wall: the ring stands up on it.
