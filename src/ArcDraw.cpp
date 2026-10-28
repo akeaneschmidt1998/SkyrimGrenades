@@ -52,20 +52,24 @@ namespace ArcDraw
 
 		// Arc: bright near the hand, slightly dimmer far away; if nothing is hit within the traced
 		// time it fades out to say "it's going further than this".
-		Polyline(dl, f.path, w, h, s.thickness, 255, 170, 60, [&](std::size_t i, std::size_t n) {
+		const int ar = f.frost ? 130 : 255, ag = f.frost ? 200 : 170, ab = f.frost ? 255 : 60;
+		Polyline(dl, f.path, w, h, s.thickness, ar, ag, ab, [&](std::size_t i, std::size_t n) {
 			const float t = static_cast<float>(i) / static_cast<float>((std::max)(n - 1, std::size_t{ 1 }));
 			const float fade = f.landed ? 1.0f - 0.35f * t : 1.0f - t;
 			return o * fade;
 		});
 
-		// Blast ring: red when the pot will hit someone directly, orange otherwise.
+		// Blast ring
 		if (f.landed && s.showRing && f.ring.size() > 2) {
-			const int g = f.hitsActor ? 60 : 110;
-			Polyline(dl, f.ring, w, h, s.thickness * 0.8f, 255, g, 30, [&](std::size_t, std::size_t) { return o; });
+			// red when it hits someone directly; otherwise the pot's colour
+			const int rr = f.hitsActor ? 255 : (f.frost ? 90 : 255);
+			const int g = f.hitsActor ? 60 : (f.frost ? 170 : 110);
+			const int rb = f.hitsActor ? 30 : (f.frost ? 255 : 30);
+			Polyline(dl, f.ring, w, h, s.thickness * 0.8f, rr, g, rb, [&](std::size_t, std::size_t) { return o; });
 			// landing dot
 			const auto& last = f.path.empty() ? ArcState::ScreenPt{} : f.path.back();
 			if (last.visible) {
-				dl->AddCircleFilled(ToPx(last, w, h), s.thickness * 1.6f, Rgba(255, g, 30, o));
+				dl->AddCircleFilled(ToPx(last, w, h), s.thickness * 1.6f, Rgba(rr, g, rb, o));
 			}
 		}
 
@@ -88,11 +92,13 @@ namespace ArcDraw
 			ringArc(1.0f, Rgba(0, 0, 0, o * 0.45f), s.thickness + 3.0f);
 			if (f.charge > 0.001f) {
 				const bool full = f.charge >= 0.999f;
-				ringArc(std::clamp(f.charge, 0.0f, 1.0f), full ? Rgba(255, 220, 120, o) : Rgba(255, 150, 40, o), s.thickness + 1.0f);
+				const ImU32 col = f.frost ? (full ? Rgba(200, 240, 255, o) : Rgba(110, 190, 255, o)) :
+				                            (full ? Rgba(255, 220, 120, o) : Rgba(255, 150, 40, o));
+				ringArc(std::clamp(f.charge, 0.0f, 1.0f), col, s.thickness + 1.0f);
 			}
 
-			char text[48];
-			std::snprintf(text, sizeof(text), "Fire Pot x%d", f.potsLeft);
+			char text[64];
+			std::snprintf(text, sizeof(text), "%s x%d", f.potName.c_str(), f.potsLeft);
 			const ImVec2 ts = ImGui::CalcTextSize(text);
 			const ImVec2 tp{ c.x - ts.x * 0.5f, c.y + radius + 6.0f };
 			dl->AddText({ tp.x + 1, tp.y + 1 }, Rgba(0, 0, 0, o), text);

@@ -10,6 +10,7 @@ namespace Config
 {
 	// --- Throw ---
 	inline std::uint32_t throwKey = 34;       // G: hold to wind up, release to throw
+	inline std::uint32_t cycleKey = 47;       // V: switch pot type (fire / frost)
 	inline std::uint32_t reloadConfigKey = 0;  // re-read the INI in game
 	inline float         minSpeed = 700.0f;    // units/s at the shortest throw
 	inline float         maxSpeed = 1700.0f;   // units/s at full wind-up
@@ -38,8 +39,10 @@ namespace Config
 	inline bool  autoCalibrate = true;
 
 	// --- Visuals: borrowed from vanilla forms at load ("Plugin.esm|HEXID", or a mesh path) ---
-	inline std::string potModel = "Skyrim.esm|0B9BD2";        // GlazedPot01: item + flying pot
-	inline std::string explosionModel = "Skyrim.esm|070E5C";  // TrapOilLampExplosion01: fire burst + light
+	inline std::string firePotModel = "Skyrim.esm|0B9BD2";         // GlazedPot01: item + flying pot
+	inline std::string fireExplosionModel = "Skyrim.esm|070E5C";   // TrapOilLampExplosion01: fire burst + light
+	inline std::string frostPotModel = "Skyrim.esm|0B9BDE";        // GlazedJugSmall01
+	inline std::string frostExplosionModel = "Skyrim.esm|044089";  // ExplosionRuneFrost01: frost burst + light
 
 	// --- Messages ---
 	inline bool printToConsole = true;

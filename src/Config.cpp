@@ -36,6 +36,7 @@ namespace
 		using namespace Config;
 		// clang-format off
 		if      (key == "ithrowkey")          throwKey = static_cast<std::uint32_t>(std::stoul(val));
+		else if (key == "icyclekey")          cycleKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "ireloadconfigkey")   reloadConfigKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "fminspeed")          minSpeed = (std::max)(50.0f, std::stof(val));
 		else if (key == "fmaxspeed")          maxSpeed = (std::max)(50.0f, std::stof(val));
@@ -56,8 +57,10 @@ namespace
 		else if (key == "bshowchargemeter")   showChargeMeter = ParseBool(val);
 		else if (key == "fgravityunits")      gravityUnits = (std::max)(0.0f, std::stof(val));
 		else if (key == "bautocalibrate")     autoCalibrate = ParseBool(val);
-		else if (key == "spotmodel")          potModel = Unquote(val);
-		else if (key == "sexplosionmodel")    explosionModel = Unquote(val);
+		else if (key == "sfirepotmodel" || key == "spotmodel")             firePotModel = Unquote(val);
+		else if (key == "sfireexplosionmodel" || key == "sexplosionmodel") fireExplosionModel = Unquote(val);
+		else if (key == "sfrostpotmodel")       frostPotModel = Unquote(val);
+		else if (key == "sfrostexplosionmodel") frostExplosionModel = Unquote(val);
 		else if (key == "bprinttoconsole")    printToConsole = ParseBool(val);
 		else if (key == "bshownotification")  showNotification = ParseBool(val);
 		else logger::warn("Unknown INI key '{}'", key);
@@ -105,6 +108,7 @@ namespace Config
 		if (maxSpeed < minSpeed) {
 			std::swap(minSpeed, maxSpeed);
 		}
+		logger::info("Cycle key {}", cycleKey);
 		logger::info("Throw key {}, speed {}-{} u/s over {}s, loft {} deg, node '{}'",
 			throwKey, minSpeed, maxSpeed, chargeSeconds, loftDegrees, throwNode);
 		logger::info("Preview: arc={} ring={} (r={}) gravity={} autoCalibrate={}",

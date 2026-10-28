@@ -5,14 +5,24 @@ namespace Forms
 {
 	inline constexpr std::string_view kPlugin = "FirePots.esp";
 
-	// Fixed local form IDs (tools/MakePlugin/Program.cs).
-	inline constexpr RE::FormID kPotId = 0x800;
-	inline constexpr RE::FormID kProjectileId = 0x801;
-	inline constexpr RE::FormID kExplosionId = 0x802;
+	// One throwable kind. Form IDs in the ESP are base, base+1 (projectile), base+2 (explosion)
+	// (tools/MakePlugin/Program.cs).
+	struct PotType
+	{
+		const char*        name;    // "Fire Pot"
+		RE::FormID         baseId;  // local ID of the item
+		const std::string* potModel;        // INI setting: model source for item + flying pot
+		const std::string* explosionModel;  // INI setting: model source for the burst
 
-	inline RE::TESObjectMISC* pot = nullptr;
-	inline RE::BGSProjectile* projectile = nullptr;
-	inline RE::BGSExplosion*  explosion = nullptr;
+		RE::TESObjectMISC* item = nullptr;
+		RE::BGSProjectile* projectile = nullptr;
+		RE::BGSExplosion*  explosion = nullptr;
+
+		[[nodiscard]] bool Ready() const { return item && projectile && explosion; }
+	};
+
+	// Fire, Frost. Index order is the cycling order.
+	std::vector<PotType>& Types();
 
 	// False (and logged) if FirePots.esp isn't loaded or a form is missing.
 	bool Load();

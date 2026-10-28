@@ -3,6 +3,7 @@
 // swap-chain Present hook (OverlayD3D). Plain std only: OverlayD3D.cpp can't include CommonLib.
 
 #include <mutex>
+#include <string>
 #include <vector>
 
 namespace ArcState
@@ -26,6 +27,8 @@ namespace ArcState
 		std::vector<ScreenPt> path;
 		std::vector<ScreenPt> ring;  // blast radius at the landing point
 		int                   potsLeft = 0;
+		std::string           potName = "Fire Pot";
+		bool                  frost = false;  // tint the arc blue
 	};
 
 	inline std::mutex g_lock;

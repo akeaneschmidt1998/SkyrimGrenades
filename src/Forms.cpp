@@ -46,11 +46,63 @@ namespace
 		}
 		return model->GetModel();
 	}
+
+	bool LoadType(RE::TESDataHandler* a_dh, Forms::PotType& a_type)
+	{
+		a_type.item = a_dh->LookupForm<RE::TESObjectMISC>(a_type.baseId, Forms::kPlugin);
+		a_type.projectile = a_dh->LookupForm<RE::BGSProjectile>(a_type.baseId + 1, Forms::kPlugin);
+		a_type.explosion = a_dh->LookupForm<RE::BGSExplosion>(a_type.baseId + 2, Forms::kPlugin);
+		if (!a_type.Ready()) {
+			logger::error("{}: {} forms missing (item {}, projectile {}, explosion {}); is it an old version?",
+				Forms::kPlugin, a_type.name, static_cast<void*>(a_type.item), static_cast<void*>(a_type.projectile),
+				static_cast<void*>(a_type.explosion));
+			return false;
+		}
+
+		// Pot model: the inventory item and the flying projectile share it.
+		const auto potMesh = ResolveModel(*a_type.potModel);
+		if (!potMesh.empty()) {
+			a_type.item->SetModel(potMesh.c_str());
+			a_type.projectile->SetModel(potMesh.c_str());
+		}
+
+		// Burst model and light from a vanilla explosion.
+		RE::TESForm* explSource = nullptr;
+		const auto   burstMesh = ResolveModel(*a_type.explosionModel, &explSource);
+		if (!burstMesh.empty()) {
+			a_type.explosion->SetModel(burstMesh.c_str());
+		}
+		if (auto* vanilla = explSource ? explSource->As<RE::BGSExplosion>() : nullptr) {
+			if (!a_type.explosion->data.light) {
+				a_type.explosion->data.light = vanilla->data.light;
+			}
+		}
+
+		logger::info("{} ready: item {:08X}, projectile {:08X}, explosion {:08X} (radius {}, placed {:08X}); "
+					 "pot model '{}' (from {}), burst model '{}' (from {})",
+			a_type.name, a_type.item->GetFormID(), a_type.projectile->GetFormID(), a_type.explosion->GetFormID(),
+			a_type.explosion->data.radius,
+			a_type.explosion->data.impactPlacedObject ? a_type.explosion->data.impactPlacedObject->GetFormID() : 0u,
+			potMesh, *a_type.potModel, burstMesh, *a_type.explosionModel);
+		return true;
+	}
 }
 
 namespace Forms
 {
-	bool Ready() { return pot && projectile && explosion; }
+	std::vector<PotType>& Types()
+	{
+		static std::vector<PotType> types{
+			PotType{ "Fire Pot", 0x800, &Config::firePotModel, &Config::fireExplosionModel },
+			PotType{ "Frost Pot", 0x810, &Config::frostPotModel, &Config::frostExplosionModel },
+		};
+		return types;
+	}
+
+	bool Ready()
+	{
+		return std::ranges::any_of(Types(), [](const PotType& t) { return t.Ready(); });
+	}
 
 	bool Load()
 	{
@@ -59,40 +111,10 @@ namespace Forms
 			logger::error("{} is not loaded: enable it in your load order", kPlugin);
 			return false;
 		}
-		pot = dh->LookupForm<RE::TESObjectMISC>(kPotId, kPlugin);
-		projectile = dh->LookupForm<RE::BGSProjectile>(kProjectileId, kPlugin);
-		explosion = dh->LookupForm<RE::BGSExplosion>(kExplosionId, kPlugin);
-		if (!Ready()) {
-			logger::error("{}: missing forms (pot {}, projectile {}, explosion {}); is it an old version?",
-				kPlugin, static_cast<void*>(pot), static_cast<void*>(projectile), static_cast<void*>(explosion));
-			return false;
+		bool all = true;
+		for (auto& t : Types()) {
+			all = LoadType(dh, t) && all;
 		}
-
-		// Pot model: the inventory item and the flying projectile share it.
-		const auto potMesh = ResolveModel(Config::potModel);
-		if (!potMesh.empty()) {
-			pot->SetModel(potMesh.c_str());
-			projectile->SetModel(potMesh.c_str());
-		}
-		logger::info("Pot model: '{}' (from {})", potMesh, Config::potModel);
-
-		// Fire burst model and light from a vanilla explosion.
-		RE::TESForm* explSource = nullptr;
-		const auto   burstMesh = ResolveModel(Config::explosionModel, &explSource);
-		if (!burstMesh.empty()) {
-			explosion->SetModel(burstMesh.c_str());
-		}
-		if (auto* vanilla = explSource ? explSource->As<RE::BGSExplosion>() : nullptr) {
-			if (!explosion->data.light) {
-				explosion->data.light = vanilla->data.light;
-			}
-		}
-		logger::info("Burst model: '{}', light {:08X} (from {})", burstMesh,
-			explosion->data.light ? explosion->data.light->GetFormID() : 0u, Config::explosionModel);
-
-		logger::info("Forms ready: pot {:08X}, projectile {:08X}, explosion {:08X} (radius {}, placed {})",
-			pot->GetFormID(), projectile->GetFormID(), explosion->GetFormID(), explosion->data.radius,
-			explosion->data.impactPlacedObject ? explosion->data.impactPlacedObject->GetFormID() : 0u);
-		return true;
+		return all;
 	}
 }

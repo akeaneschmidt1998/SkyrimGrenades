@@ -51,6 +51,7 @@ namespace
 		std::atomic<bool> pressed{ false };   // throw key went down since the last tick
 		std::atomic<bool> cancel{ false };    // block pressed since the last tick
 		std::atomic<bool> reload{ false };
+		std::atomic<bool> cycle{ false };     // cycle key pressed since the last tick
 	};
 	InputFlags g_input;
 
@@ -82,6 +83,10 @@ namespace
 					}
 					continue;
 				}
+				if (button->IsDown() && MatchesKey(button, Config::cycleKey)) {
+					g_input.cycle = true;
+					continue;
+				}
 				if (button->IsDown() && MatchesKey(button, Config::reloadConfigKey)) {
 					g_input.reload = true;
 					continue;
@@ -100,6 +105,41 @@ namespace
 		InputSink() = default;
 	};
 
+	// --- Pot types ---------------------------------------------------------------------------
+	std::size_t g_typeIndex = 0;  // selected pot type (Forms::Types())
+
+	Forms::PotType& CurrentType() { return Forms::Types()[g_typeIndex % Forms::Types().size()]; }
+
+	int CountItem(RE::PlayerCharacter* a_player, RE::TESBoundObject* a_item)
+	{
+		if (!a_item) {
+			return 0;
+		}
+		const auto counts = a_player->GetInventoryCounts([a_item](RE::TESBoundObject& a_obj) { return &a_obj == a_item; });
+		const auto it = counts.find(a_item);
+		return it == counts.end() ? 0 : it->second;
+	}
+
+	int CountPots(RE::PlayerCharacter* a_player, const Forms::PotType& a_type)
+	{
+		return a_type.Ready() ? CountItem(a_player, a_type.item) : 0;
+	}
+
+	// Moves the selection to the next type the player carries (starting after the current one when
+	// a_advance, else at it). Returns false if they carry none at all.
+	bool SelectCarriedType(RE::PlayerCharacter* a_player, bool a_advance)
+	{
+		const auto n = Forms::Types().size();
+		for (std::size_t step = a_advance ? 1 : 0; step < n + (a_advance ? 1 : 0); ++step) {
+			const auto i = (g_typeIndex + step) % n;
+			if (CountPots(a_player, Forms::Types()[i]) > 0) {
+				g_typeIndex = i;
+				return true;
+			}
+		}
+		return false;
+	}
+
 	// --- Engine calibration ---------------------------------------------------------------
 	// Learned from the first throw(s): units/s^2 of gravity per 1.0 of the projectile's Gravity
 	// field, how the engine scales the speed we set, and which way its pitch angle points.
@@ -112,7 +152,8 @@ namespace
 		const float perUnit = Config::gravityUnits > 0.0f ? Config::gravityUnits :
 		                      g_gravityPerUnit > 0.0f     ? g_gravityPerUnit :
 		                                                    Ballistics::kDefaultGravityUnits;
-		return perUnit * (Forms::projectile ? Forms::projectile->data.gravity : 1.0f);
+		auto* proj = CurrentType().projectile;
+		return perUnit * (proj ? proj->data.gravity : 1.0f);
 	}
 
 	struct Flight
@@ -289,6 +330,8 @@ namespace
 	void PublishPreview(RE::PlayerCharacter* a_player, const Plan& a_plan, float a_charge, int a_pots)
 	{
 		ArcState::Frame frame;
+		frame.potName = CurrentType().name;
+		frame.frost = g_typeIndex == 1;
 		frame.active = true;
 		frame.charge = a_charge;
 		frame.speed = a_plan.speed;
@@ -331,17 +374,10 @@ namespace
 	}
 
 	// --- The throw -------------------------------------------------------------------------
-	int CountPots(RE::PlayerCharacter* a_player)
-	{
-		auto* pot = Forms::pot;
-		const auto counts = a_player->GetInventoryCounts([pot](RE::TESBoundObject& a_obj) { return &a_obj == pot; });
-		const auto it = counts.find(pot);
-		return it == counts.end() ? 0 : it->second;
-	}
-
 	void Launch(RE::PlayerCharacter* a_player, const Plan& a_plan, float a_charge)
 	{
-		auto* base = Forms::projectile;
+		auto& type = CurrentType();
+		auto* base = type.projectile;
 		// The engine reads the speed from the form when the projectile spawns; compensate for any
 		// speed multiplier it applies on top (measured on the first throw).
 		base->data.speed = a_plan.speed / g_speedScale;
@@ -362,7 +398,7 @@ namespace
 			logger::error("Projectile::Launch returned no projectile");
 			return;
 		}
-		a_player->RemoveItem(Forms::pot, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+		a_player->RemoveItem(type.item, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 
 		if (Config::autoCalibrate || g_gravityPerUnit <= 0.0f) {
 			g_flight = Flight{};
@@ -372,8 +408,8 @@ namespace
 			g_flight.baseGravity = base->data.gravity;
 			g_flight.dir = a_plan.dir;
 		}
-		logger::info("Threw a Fire Pot: {:.0f}% wind-up, {:.0f} u/s, pitch {:.1f} deg, from ({:.0f}, {:.0f}, {:.0f})",
-			a_charge * 100.0f, a_plan.speed, std::asin(a_plan.dir.z) * 180.0f / Ballistics::kPi,
+		logger::info("Threw a {}: {:.0f}% wind-up, {:.0f} u/s, pitch {:.1f} deg, from ({:.0f}, {:.0f}, {:.0f})",
+			type.name, a_charge * 100.0f, a_plan.speed, std::asin(a_plan.dir.z) * 180.0f / Ballistics::kPi,
 			a_plan.launch.origin.x, a_plan.launch.origin.y, a_plan.launch.origin.z);
 	}
 
@@ -436,6 +472,15 @@ namespace
 		const bool pressed = g_input.pressed.exchange(false);
 		const bool cancel = g_input.cancel.exchange(false);
 
+		if (g_input.cycle.exchange(false) && Forms::Ready()) {
+			if (SelectCarriedType(a_player, true)) {
+				g_throw.pots = CountPots(a_player, CurrentType());
+				Report(fmt::format("{} ({})", CurrentType().name, g_throw.pots), true);
+			} else {
+				Report("You have no Fire Pots or Frost Pots.", true);
+			}
+		}
+
 		if (g_throw.phase == Phase::kIdle) {
 			if (!pressed) {
 				return;
@@ -453,11 +498,16 @@ namespace
 			if (g_throw.cooldown > 0.0f) {
 				return;
 			}
-			g_throw.pots = CountPots(a_player);
-			if (g_throw.pots <= 0) {
-				Report("You have no Fire Pots.", true);
+			// throw the selected type; if you're out of it, switch to one you have
+			const auto before = g_typeIndex;
+			if (!SelectCarriedType(a_player, false)) {
+				Report("You have no Fire Pots or Frost Pots.", true);
 				return;
 			}
+			if (g_typeIndex != before) {
+				Report(fmt::format("Switched to {}", CurrentType().name), false);
+			}
+			g_throw.pots = CountPots(a_player, CurrentType());
 			g_throw.phase = Phase::kWinding;
 			g_throw.held = 0.0f;
 		}
@@ -536,7 +586,7 @@ namespace Thrower
 			return;
 		}
 		devices->AddEventSink(InputSink::GetSingleton());
-		logger::info("Input listener registered (throw key {})", Config::throwKey);
+		logger::info("Input listener registered (throw key {}, cycle key {})", Config::throwKey, Config::cycleKey);
 	}
 
 	void Reset()
@@ -546,5 +596,6 @@ namespace Thrower
 		g_input.keyDown = false;
 		g_input.pressed = false;
 		g_input.cancel = false;
+		g_input.cycle = false;
 	}
 }
