@@ -8,6 +8,8 @@
 
 #include <xmmintrin.h>
 
+#undef GetObject  // <Windows.h> renames it to GetObjectA, which breaks BGSDefaultObjectManager::GetObject
+
 namespace
 {
 	using Ballistics::Vec3;
