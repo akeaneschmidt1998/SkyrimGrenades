@@ -623,20 +623,20 @@ namespace
 	// Is anyone (alive) standing within a tripwire's reach?
 	bool SomeoneNear(RE::PlayerCharacter* a_player, const Vec3& a_at)
 	{
-		auto near = [&](RE::Actor* a) {
+		auto close = [&](RE::Actor* a) {
 			if (!a || a->IsDead() || a->IsDisabled()) {
 				return false;
 			}
 			const Vec3 d = ToVec(a->GetPosition()) - a_at;
 			return std::sqrt(d.x * d.x + d.y * d.y) <= Bombs::kTripwireRadius && std::fabs(d.z) < 150.0f;
 		};
-		if (near(a_player)) {
+		if (close(a_player)) {
 			return true;
 		}
 		bool found = false;
 		if (auto* lists = RE::ProcessLists::GetSingleton()) {
 			lists->ForEachHighActor([&](RE::Actor* a_actor) {
-				if (near(a_actor)) {
+				if (close(a_actor)) {
 					found = true;
 					return RE::BSContainer::ForEachResult::kStop;
 				}
