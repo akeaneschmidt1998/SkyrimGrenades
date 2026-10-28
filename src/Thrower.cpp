@@ -359,6 +359,153 @@ namespace
 		}
 	}
 
+	// --- Size: bombs fly and sit at Config::projectileScale of the container's size ------------
+	// LaunchData's scale isn't used by the engine, so the projectile's node is scaled every frame.
+	std::vector<RE::ProjectileHandle> g_scaled;
+
+	void Shrink(RE::TESObjectREFR* a_ref)
+	{
+		const float s = Config::projectileScale;
+		if (auto* node = a_ref ? a_ref->Get3D() : nullptr; node && std::fabs(node->local.scale - s) > 0.001f) {
+			node->local.scale = s;
+			RE::NiUpdateData ud;
+			node->Update(ud);
+		}
+	}
+
+	void UpdateScaled()
+	{
+		if (std::fabs(Config::projectileScale - 1.0f) < 0.001f) {
+			g_scaled.clear();
+			return;
+		}
+		std::erase_if(g_scaled, [](const RE::ProjectileHandle& h) {
+			auto p = h.get();
+			if (!p || p->IsDeleted() || p->IsDisabled()) {
+				return true;
+			}
+			Shrink(p.get());
+			return false;
+		});
+	}
+
+	// --- Fuse bombs: real physics objects ------------------------------------------------------
+	// The bomb item itself is dropped at the hand and thrown with havok (so it bounces, rolls and
+	// comes to rest) and can't be picked up. When its fuse runs out it's replaced by the impact
+	// version of the same bomb dropped onto that spot, which bursts at once.
+	struct Lit
+	{
+		RE::ObjectRefHandle ref;
+		int                 type = 0;
+		Vec3                origin;
+		Vec3                velocity;
+		int                 pushes = 0;  // frames the velocity was applied (twice: the body can join the world a frame late)
+		int                 waited = 0;  // frames spent waiting for the body to exist
+		float               age = 0.0f;
+		float               fuse = 2.0f;
+		Vec3                last;
+	};
+	std::vector<Lit> g_lit;
+
+	RE::bhkRigidBody* FindBody(RE::TESObjectREFR* a_ref)
+	{
+		auto* root = a_ref->Get3D();
+		if (!root) {
+			return nullptr;
+		}
+		RE::bhkRigidBody* found = nullptr;
+		RE::BSVisit::TraverseScenegraphCollision(root, [&](RE::bhkNiCollisionObject* a_col) {
+			if (a_col && a_col->body) {
+				found = netimmerse_cast<RE::bhkRigidBody*>(a_col->body.get());
+			}
+			return found ? RE::BSVisit::BSVisitControl::kStop : RE::BSVisit::BSVisitControl::kContinue;
+		});
+		return found;
+	}
+
+	void Detonate(RE::PlayerCharacter* a_player, int a_type, const Vec3& a_at)
+	{
+		const auto& lit = Forms::Types()[a_type];
+		auto&       impact = Forms::Types()[Bombs::Index(Bombs::kImpact, lit.payload, lit.strength)];
+		if (!impact.Ready()) {
+			return;
+		}
+		impact.projectile->data.speed = 300.0f;
+		RE::Projectile::ProjectileRot rot{ 1.5707963f * g_pitchSign, 0.0f };  // straight down
+		RE::Projectile::LaunchData    data(impact.projectile, a_player, ToNi(a_at + Vec3{ 0.0f, 0.0f, 20.0f }), rot);
+		data.autoAim = false;
+		data.useOrigin = true;
+		RE::ProjectileHandle h;
+		RE::Projectile::Launch(&h, data);
+		if (h) {
+			Track(h, impact);
+		}
+		logger::info("{} went off at ({:.0f}, {:.0f}, {:.0f})", lit.name, a_at.x, a_at.y, a_at.z);
+	}
+
+	bool ThrowLit(RE::PlayerCharacter* a_player, int a_type, const Vec3& a_origin, const Vec3& a_velocity)
+	{
+		auto& type = Forms::Types()[a_type];
+		auto  ref = a_player->PlaceObjectAtMe(type.item, false);
+		if (!ref) {
+			return false;
+		}
+		ref->SetActivationBlocked(true);
+		if (std::fabs(Config::projectileScale - 1.0f) > 0.001f) {
+			ref->SetScale(Config::projectileScale);
+		}
+		ref->SetPosition(ToNi(a_origin));
+		Lit l;
+		l.ref = ref->GetHandle();
+		l.type = a_type;
+		l.origin = a_origin;
+		l.velocity = a_velocity;
+		l.fuse = Bombs::FuseSeconds(type.trigger);
+		l.last = a_origin;
+		g_lit.push_back(l);
+		return true;
+	}
+
+	void UpdateLit(RE::PlayerCharacter* a_player, float a_dt)
+	{
+		for (auto it = g_lit.begin(); it != g_lit.end();) {
+			auto ref = it->ref.get();
+			if (!ref || ref->IsDeleted() || ref->IsDisabled()) {
+				it = g_lit.erase(it);  // gone some other way (cell unloaded...)
+				continue;
+			}
+			it->age += a_dt;
+			it->last = ToVec(ref->GetPosition());
+			if (it->pushes < 2) {
+				if (auto* body = FindBody(ref.get())) {
+					const float s = RE::bhkWorld::GetWorldScale();
+					if (it->pushes == 0) {
+						RE::hkVector4 pos(it->origin.x * s, it->origin.y * s, it->origin.z * s, 0.0f);
+						body->SetPosition(pos);
+						body->SetAngularVelocity(RE::hkVector4(4.0f, 1.5f, 0.0f, 0.0f));  // a little tumble
+					}
+					body->SetLinearVelocity(RE::hkVector4(it->velocity.x * s, it->velocity.y * s, it->velocity.z * s, 0.0f));
+					if (++it->pushes == 2) {
+						logger::info("{} thrown as a physics object ({:.0f} u/s)", Forms::Types()[it->type].name, it->velocity.Length());
+					}
+				} else if (++it->waited == 60) {
+					logger::warn("{}: no physics body (the container's mesh has no collision?); it will just drop",
+						Forms::Types()[it->type].name);
+				}
+			}
+			if (it->age >= it->fuse) {
+				const Vec3 at = it->last;
+				const int  type = it->type;
+				ref->Disable();
+				ref->SetDelete(true);
+				it = g_lit.erase(it);
+				Detonate(a_player, type, at);
+				continue;
+			}
+			++it;
+		}
+	}
+
 	// --- Aim -------------------------------------------------------------------------------
 	struct Aim
 	{
@@ -503,7 +650,8 @@ namespace
 		p.dir = Ballistics::Loft(a_aim.forward, Config::loftDegrees * Ballistics::kPi / 180.0f);
 		p.launch.origin = a_aim.origin;
 		p.launch.velocity = p.dir * p.speed;
-		p.launch.gravity = PreviewGravity();
+		// fuse bombs fly as havok objects: real-world gravity
+		p.launch.gravity = Bombs::IsFuse(CurrentType().trigger) ? Ballistics::kDefaultGravityUnits : PreviewGravity();
 		return p;
 	}
 
@@ -564,6 +712,21 @@ namespace
 	void Launch(RE::PlayerCharacter* a_player, const Plan& a_plan, float a_charge, bool a_takeItem = true)
 	{
 		auto& type = CurrentType();
+		if (Bombs::IsFuse(type.trigger)) {
+			// start a little ahead of the hand so it doesn't knock into the thrower
+			const Vec3 origin = a_plan.launch.origin + a_plan.dir * 25.0f;
+			if (!ThrowLit(a_player, static_cast<int>(g_typeIndex), origin, a_plan.launch.velocity)) {
+				Report("Bomb throw failed (see FirePots.log)", true);
+				logger::error("PlaceObjectAtMe returned nothing for {}", type.name);
+				return;
+			}
+			if (a_takeItem) {
+				a_player->RemoveItem(type.item, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+			}
+			logger::info("Threw a {}: {:.0f}% wind-up, {:.0f} u/s, pitch {:.1f} deg, fuse {:.1f} s", type.name, a_charge * 100.0f,
+				a_plan.speed, std::asin(a_plan.dir.z) * 180.0f / Ballistics::kPi, Bombs::FuseSeconds(type.trigger));
+			return;
+		}
 		auto* base = type.projectile;
 		// The engine reads the speed from the form when the projectile spawns; compensate for any
 		// speed multiplier it applies on top (measured on the first throw).
@@ -587,6 +750,13 @@ namespace
 		}
 		if (a_takeItem) {
 			a_player->RemoveItem(type.item, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+		}
+		if (std::fabs(Config::projectileScale - 1.0f) > 0.001f) {
+			if (auto p = handle.get()) {
+				p->SetScale(Config::projectileScale);
+				Shrink(p.get());
+			}
+			g_scaled.push_back(handle);
 		}
 
 		Track(handle, type);
@@ -684,6 +854,8 @@ namespace
 		}
 
 		TrackFlight(dt);
+		UpdateScaled();
+		UpdateLit(a_player, dt);
 		UpdateOil(a_player, dt);
 		g_throw.cooldown = (std::max)(0.0f, g_throw.cooldown - dt);
 
@@ -884,6 +1056,8 @@ namespace Thrower
 		g_pending = PendingCast{};
 		g_live.clear();
 		g_slicks.clear();
+		g_lit.clear();
+		g_scaled.clear();
 		g_input.keyDown = false;
 		g_input.pressed = false;
 		g_input.cycle = false;

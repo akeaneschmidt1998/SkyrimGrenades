@@ -117,7 +117,7 @@ jobs:
           cmake --build --preset release --target arc_preview craft_preview
           New-Item -ItemType Directory -Force preview | Out-Null
           ./build/release/arc_preview.exe preview
-          ./build/release/craft_preview.exe preview
+          ./build/release/craft_preview.exe preview dist/SKSE/Plugins/FirePots/MenuFont.ttf
 
       - name: Get game data (esp)
         uses: actions/download-artifact@v4
@@ -130,6 +130,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force mod/SKSE/Plugins | Out-Null
           Copy-Item dist/SKSE/Plugins/FirePots.dll, dist/SKSE/Plugins/FirePots.ini mod/SKSE/Plugins/
+          Copy-Item -Recurse -Force dist/SKSE/Plugins/FirePots mod/SKSE/Plugins/
           Get-ChildItem -Recurse -File mod | ForEach-Object { $_.FullName.Substring((Resolve-Path mod).Path.Length + 1) }
 
       # The zip holds FirePots.esp and SKSE/Plugins/ at its root: installs as-is in MO2 / Vortex.

@@ -52,8 +52,11 @@ namespace
 		for (int y = 0; y < kH; ++y)
 			for (int x = 0; x < kW; ++x) {
 				float* p = &img.rgb[(y * kW + x) * 3];
-				const float t = static_cast<float>(y) / kH;
-				p[0] = 60 + 40 * t; p[1] = 66 + 30 * t; p[2] = 70 + 20 * t;  // a dim "game" behind
+				// a stand-in for the world behind: sky, hills, snowy ground
+				const float t = static_cast<float>(y) / kH, s = static_cast<float>(x) / kW;
+				const float hill = 0.55f + 0.06f * std::sin(s * 9.0f) + 0.03f * std::sin(s * 23.0f + 1.0f);
+				if (t < hill) { p[0] = 120 + 60 * t; p[1] = 140 + 50 * t; p[2] = 165 + 40 * t; }
+				else { const float g = 150 + 60 * (t - hill); p[0] = g * 0.92f; p[1] = g * 0.95f; p[2] = g; }
 			}
 	}
 
@@ -167,7 +170,12 @@ int main(int argc, char** argv)
 	io.DeltaTime = 1.0f / 60.0f;
 	ImFontConfig cfg;
 	cfg.SizePixels = 24.0f;
-	io.Fonts->AddFontDefaultVector(&cfg);
+	// argv[2]: the menu font (as the game loads Data/SKSE/Plugins/FirePots/MenuFont.ttf)
+	if (argc > 2 && io.Fonts->AddFontFromFileTTF(argv[2], 24.0f)) {
+		std::printf("font %s\n", argv[2]);
+	} else {
+		io.Fonts->AddFontDefaultVector(&cfg);
+	}
 
 	const auto m = MakeModel();
 	CraftUI::State a;

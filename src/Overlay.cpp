@@ -25,7 +25,7 @@ namespace Overlay
 		std::string error;
 		if (OverlayD3D::Init(window->hWnd, data->forwarder, data->context, window->swapChain, error)) {
 			installed = true;
-			logger::info("Overlay: arc preview installed");
+			logger::info("Overlay: installed; {}", OverlayD3D::g_fontNote);
 		} else {
 			logger::error("Overlay: failed to install ({})", error);
 		}

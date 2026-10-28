@@ -9,5 +9,7 @@ namespace OverlayD3D
 {
 	// Pointers are the game's HWND, ID3D11Device*, ID3D11DeviceContext*, IDXGISwapChain*.
 	// Hooks IDXGISwapChain::Present and draws the arc every frame while winding up.
+	extern std::string g_fontNote;  // which font the menu got (for the log)
+
 	bool Init(void* a_hwnd, void* a_device, void* a_context, void* a_swapChain, std::string& a_error);
 }

@@ -21,7 +21,7 @@ namespace Config
 	inline bool          craftInCombat = true;   // allow making bombs while in combat
 	inline std::uint32_t reloadConfigKey = 0;    // re-read the INI in game
 	inline float         minSpeed = 250.0f;      // units/s at the shortest throw (~3.5 m/s)
-	inline float         maxSpeed = 650.0f;      // units/s at full wind-up (~9 m/s, ~12 m at 45 degrees)
+	inline float         maxSpeed = 835.0f;      // units/s at full wind-up (~12 m/s, ~20 m on flat ground)
 	inline float         chargeSeconds = 1.0f;   // time to full wind-up
 	inline float         loftDegrees = 12.0f;    // extra upward angle over the crosshair
 	inline float         placeReach = 250.0f;    // how far ahead a tripwire can be set down
@@ -30,7 +30,7 @@ namespace Config
 	inline bool          cancelOnBlock = true;   // pressing block during a G wind-up cancels it
 	inline std::string   throwNode = "NPC L Hand [LHnd]";       // where a left-hand / throw-key bomb leaves from
 	inline std::string   throwNodeRight = "NPC R Hand [RHnd]";  // where a right-hand bomb leaves from
-	inline float         projectileScale = 0.6f;  // size of the flying bomb model
+	inline float         projectileScale = 0.7f;  // size of a bomb in flight / on the ground (1 = the container's size)
 
 	// --- Preview (off by default) ---
 	inline bool  showArc = false;
@@ -60,15 +60,16 @@ namespace Config
 		"Skyrim.esm|070E5C",  // fire: TrapOilLampExplosion01
 		"Skyrim.esm|044089",  // frost: ExplosionRuneFrost01
 		"Skyrim.esm|01A13C",  // oil: FXdustDropSmExplosion (a splash)
-		"Skyrim.esm|0D5100",  // smoke: FXDragonDustExplosion
+		"",                   // smoke: out for now
 		"Skyrim.esm|0D13E8",  // fear: ExplosionShockMass01 (flash)
 		"Skyrim.esm|0665BB",  // frenzy: ExplosionRuneShock01
 		"Skyrim.esm|0FDBBA",  // concussion: TG08BShockwaveExplosion
 	};
-	inline std::string smokeCloudModel = "Skyrim.esm|106380";      // DA13PustuleGasCloud
 	inline std::string oilFireModel = "Skyrim.esm|109E74";         // TrapOilExplosionInitial
 
 	// --- Crafting ---
+	// Font of the bomb-making menu (a .ttf/.otf; relative to the Skyrim folder). Missing = built-in.
+	inline std::string menuFont = "Data/SKSE/Plugins/FirePots/MenuFont.ttf";
 	struct Ingredient
 	{
 		std::vector<std::string> forms;  // "Plugin.esm|HEXID"; more than one = any of them ("A or B")

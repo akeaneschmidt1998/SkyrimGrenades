@@ -23,6 +23,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <filesystem>
+#include <string>
 
 namespace
 {
@@ -200,6 +202,8 @@ namespace
 
 namespace OverlayD3D
 {
+	std::string g_fontNote;
+
 	bool Init(void* a_hwnd, void* a_device, void* a_context, void* a_swapChain, std::string& a_error)
 	{
 		g_hwnd = static_cast<HWND>(a_hwnd);
@@ -223,6 +227,16 @@ namespace OverlayD3D
 		ImFontConfig fontCfg;
 		fontCfg.SizePixels = 24.0f;
 		io.Fonts->AddFontDefaultVector(&fontCfg);
+		// the menu's font (Barlow Condensed, shipped with the mod); the built-in one if it's missing
+		std::error_code ec;
+		if (!Config::menuFont.empty() && std::filesystem::is_regular_file(Config::menuFont, ec)) {
+			if (ImFont* font = io.Fonts->AddFontFromFileTTF(Config::menuFont.c_str(), 24.0f)) {
+				io.FontDefault = font;
+				g_fontNote = "menu font: " + Config::menuFont;
+			}
+		} else {
+			g_fontNote = "menu font not found (" + Config::menuFont + "), using the built-in one";
+		}
 
 		if (!ImGui_ImplWin32_Init(g_hwnd) || !ImGui_ImplDX11_Init(g_device, g_context)) {
 			a_error = "ImGui backend init failed";

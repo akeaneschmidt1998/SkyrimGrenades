@@ -90,7 +90,12 @@ namespace Forms
 			return false;
 		}
 		int ready = 0;
+		int wanted = 0;
 		for (auto& t : Types()) {
+			if (!Bombs::Available(t.payload)) {
+				continue;  // smoke: out for now
+			}
+			++wanted;
 			t.item = dh->LookupForm<RE::ScrollItem>(Bombs::ItemId(t.index), kPlugin);
 			t.projectile = dh->LookupForm<RE::BGSProjectile>(Bombs::ProjectileId(t.index), kPlugin);
 			t.explosion = dh->LookupForm<RE::BGSExplosion>(Bombs::ExplosionId(t.payload, t.strength), kPlugin);
@@ -112,6 +117,9 @@ namespace Forms
 
 		// explosions: one per payload x strength, shared by the triggers
 		for (int p = 0; p < Bombs::kPayloads; ++p) {
+			if (!Bombs::Available(p)) {
+				continue;
+			}
 			RE::TESForm* source = nullptr;
 			const auto   mesh = ResolveModel(Config::explosionModel[p], &source);
 			auto*        vanilla = source ? source->As<RE::BGSExplosion>() : nullptr;
@@ -129,16 +137,11 @@ namespace Forms
 			}
 			logger::info("{} burst model '{}' (from {})", Bombs::kPayloadNames[p], mesh, Config::explosionModel[p]);
 		}
-		for (int s = 0; s < Bombs::kStrengths; ++s) {
-			if (auto* cloud = dh->LookupForm<RE::BGSHazard>(Bombs::SmokeCloudId(s), kPlugin)) {
-				SetModelFrom(cloud, Config::smokeCloudModel, "Smoke cloud");
-			}
-		}
 		oilFireProjectile = dh->LookupForm<RE::BGSProjectile>(Bombs::kOilFireProjectileId, kPlugin);
 		if (oilFireProjectile && oilFireProjectile->data.explosionType) {
 			SetModelFrom(oilFireProjectile->data.explosionType, Config::oilFireModel, "Burning oil");
 		}
-		logger::info("{} of {} bombs ready", ready, Bombs::kCount);
-		return ready == Bombs::kCount;
+		logger::info("{} of {} bombs ready", ready, wanted);
+		return ready == wanted;
 	}
 }

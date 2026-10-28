@@ -51,6 +51,14 @@ namespace Bombs
 	constexpr float OilSlickRadius(int a_strength) { return 120.0f + 60.0f * static_cast<float>(a_strength); }
 	inline constexpr float kTripwireRadius = 120.0f;  // proximity trigger (ESP)
 
+	// Fuse bombs are real physics objects (they bounce and roll); the fuse is lit when thrown.
+	constexpr float FuseSeconds(int a_trigger) { return a_trigger == kShortFuse ? 2.0f : a_trigger == kLongFuse ? 4.5f : 0.0f; }
+	constexpr bool  IsFuse(int a_trigger) { return a_trigger == kShortFuse || a_trigger == kLongFuse; }
+
+	// Payloads in the game. Smoke is out until there's a real smoke effect to show (see README, To do);
+	// its form IDs stay reserved so nothing else moves.
+	constexpr bool Available(int a_payload) { return a_payload != kSmoke; }
+
 	inline std::string Name(int a_index)
 	{
 		return std::string(kStrengthNames[StrengthOf(a_index)]) + " " + std::string(kPayloadNames[PayloadOf(a_index)]) +
@@ -62,8 +70,8 @@ namespace Bombs
 	{
 		const auto lvl = std::to_string(10 * (a_strength + 1));
 		const char* how = a_trigger == kImpact    ? "Shatters on impact into" :
-		                  a_trigger == kShortFuse ? "Bursts a moment after landing into" :
-		                  a_trigger == kLongFuse  ? "Bursts a few seconds after landing into" :
+		                  a_trigger == kShortFuse ? "Bounces and rolls; 2 seconds after the throw it bursts into" :
+		                  a_trigger == kLongFuse  ? "Bounces and rolls; 4.5 seconds after the throw it bursts into" :
 		                                            "Set it down; when someone comes close it bursts into";
 		std::string what;
 		switch (a_payload) {

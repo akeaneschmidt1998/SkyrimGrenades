@@ -61,12 +61,12 @@
         {
           "id": "fMaxSpeed:Throw",
           "text": "Hardest throw",
-          "help": "Launch speed at full wind-up. 650 lands about 12 m away on flat ground.",
+          "help": "Launch speed at full wind-up. 835 lands about 20 m away on flat ground.",
           "type": "slider",
           "valueOptions": {
             "min": 200,
             "max": 1500,
-            "step": 25,
+            "step": 5,
             "formatString": "{0}",
             "sourceType": "ModSettingFloat"
           }

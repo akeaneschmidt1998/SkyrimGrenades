@@ -112,7 +112,9 @@ namespace
 		}
 		for (int p = 0; p < Bombs::kPayloads; ++p) {
 			if (key == "s" + Lower(std::string(Bombs::kPayloadNames[p])) + "filling") {
-				fillings.push_back(ParseIngredient(val, p));
+				if (Bombs::Available(p)) {
+					fillings.push_back(ParseIngredient(val, p));
+				}
 				return;
 			}
 			if (key == "s" + Lower(std::string(Bombs::kPayloadNames[p])) + "explosionmodel") {
@@ -155,7 +157,8 @@ namespace
 		else if (key == "fgravityunits")      gravityUnits = (std::max)(0.0f, std::stof(val));
 		else if (key == "bautocalibrate")     autoCalibrate = ParseBool(val);
 		else if (key == "bcalibratespeed")    calibrateSpeed = ParseBool(val);
-		else if (key == "ssmokecloudmodel")   smokeCloudModel = Unquote(val);
+		else if (key == "ssmokecloudmodel")   {}  // smoke is out for now
+		else if (key == "smenufont")          menuFont = Unquote(val);
 		else if (key == "soilfiremodel")      oilFireModel = Unquote(val);
 		else if (key == "breturnemptybottles")  returnEmptyBottles = ParseBool(val);
 		else if (key == "busebuiltinbottles")   useBuiltInBottles = ParseBool(val);
@@ -176,6 +179,10 @@ namespace
 			Loot l;
 			l.list = parts[0];
 			l.bomb = ParseBomb(parts[1]);
+			if (!Bombs::Available(Bombs::PayloadOf(l.bomb))) {
+				logger::info("sLoot '{}': that payload is out for now, skipped", parts[1]);
+				return;
+			}
 			l.level = std::clamp(std::stoi(parts[2]), 1, 255);
 			l.count = std::clamp(std::stoi(parts[3]), 1, 100);
 			loot.push_back(std::move(l));
@@ -271,8 +278,6 @@ namespace
 			{ { "Skyrim.esm|0F11C0" }, 1, P::kOil },              // Dwarven Oil
 			{ { "Skyrim.esm|03AD72" }, 1, P::kOil },              // Troll Fat
 			{ { "Dragonborn.esm|01CD71" }, 2, P::kOil },          // Ash Hopper Jelly
-			{ { "Skyrim.esm|033760" }, 1, P::kSmoke },            // Charcoal
-			{ { "Skyrim.esm|03F7F8" }, 2, P::kSmoke },            // Tundra Cotton
 			{ { "Skyrim.esm|03AD63" }, 1, P::kFear },             // Ectoplasm
 			{ { "Skyrim.esm|03AD73" }, 1, P::kFear },             // Glow Dust
 			{ { "Skyrim.esm|02F44C" }, 2, P::kFear },             // Nightshade
@@ -301,7 +306,6 @@ namespace
 				L("Skyrim.esm|09AF0A", B::kImpact, P::kFire, S::kMild, 1, 3),
 				L("Skyrim.esm|09AF0A", B::kShortFuse, P::kFrag, S::kMild, 1, 2),
 				L("Skyrim.esm|09AF0A", B::kImpact, P::kOil, S::kMild, 1, 2),
-				L("Skyrim.esm|09AF0A", B::kImpact, P::kSmoke, S::kMild, 5, 2),
 				L("Skyrim.esm|09AF0A", B::kTripwire, P::kFrag, S::kModerate, 10, 1),
 				// apothecaries
 				L("Skyrim.esm|09AF13", B::kImpact, P::kFire, S::kMild, 1, 2),
@@ -315,7 +319,6 @@ namespace
 				// bandit and Forsworn random loot
 				L("Skyrim.esm|10E0DD", B::kImpact, P::kFire, S::kMild, 1, 1),
 				L("Skyrim.esm|10E0DD", B::kShortFuse, P::kFrag, S::kMild, 5, 1),
-				L("Skyrim.esm|10E0DD", B::kImpact, P::kSmoke, S::kMild, 5, 1),
 				L("Skyrim.esm|10FAB6", B::kImpact, P::kFire, S::kMild, 1, 1),
 				L("Skyrim.esm|10FAB6", B::kTripwire, P::kFrag, S::kMild, 5, 1),
 			};
