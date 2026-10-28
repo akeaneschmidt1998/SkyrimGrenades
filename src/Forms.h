@@ -14,6 +14,9 @@ namespace Forms
 		RE::FormID         baseId;
 		const std::string* potModel;        // INI setting: model source for item + flying pot
 		const std::string* explosionModel;  // INI setting: model source for the burst
+		RE::FormID         hazardId = 0;              // own lingering hazard (smoke cloud), 0 = none
+		const std::string* hazardModel = nullptr;     // INI setting: model source for that hazard
+		int                color = 0;                 // arc colour: 0 fire, 1 frost, 2 smoke, 3 thunder
 
 		RE::ScrollItem*    item = nullptr;
 		RE::BGSProjectile* projectile = nullptr;
@@ -22,7 +25,7 @@ namespace Forms
 		[[nodiscard]] bool Ready() const { return item && projectile && explosion; }
 	};
 
-	// Fire, Frost. Index order is the cycling order.
+	// Fire, Frost, Smoke, Thunder. Index order is the cycling order.
 	std::vector<PotType>& Types();
 
 	// "Skyrim.esm|0B9BD2" -> that form, or nullptr (logged).

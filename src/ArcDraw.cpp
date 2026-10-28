@@ -52,7 +52,11 @@ namespace ArcDraw
 
 		// Arc: bright near the hand, slightly dimmer far away; if nothing is hit within the traced
 		// time it fades out to say "it's going further than this".
-		const int ar = f.frost ? 130 : 255, ag = f.frost ? 200 : 170, ab = f.frost ? 255 : 60;
+		// arc and ring colours per pot (fire, frost, smoke, thunder); the meter's full colour after them
+		static constexpr int kArc[4][3] = { { 255, 170, 60 }, { 130, 200, 255 }, { 200, 200, 200 }, { 255, 240, 120 } };
+		static constexpr int kRing[4][3] = { { 255, 110, 30 }, { 90, 170, 255 }, { 160, 160, 160 }, { 255, 220, 60 } };
+		const int c = std::clamp(f.color, 0, 3);
+		const int ar = kArc[c][0], ag = kArc[c][1], ab = kArc[c][2];
 		Polyline(dl, f.path, w, h, s.thickness, ar, ag, ab, [&](std::size_t i, std::size_t n) {
 			const float t = static_cast<float>(i) / static_cast<float>((std::max)(n - 1, std::size_t{ 1 }));
 			const float fade = f.landed ? 1.0f - 0.35f * t : 1.0f - t;
@@ -62,9 +66,9 @@ namespace ArcDraw
 		// Blast ring
 		if (f.landed && s.showRing && f.ring.size() > 2) {
 			// red when it hits someone directly; otherwise the pot's colour
-			const int rr = f.hitsActor ? 255 : (f.frost ? 90 : 255);
-			const int g = f.hitsActor ? 60 : (f.frost ? 170 : 110);
-			const int rb = f.hitsActor ? 30 : (f.frost ? 255 : 30);
+			const int rr = f.hitsActor ? 255 : kRing[c][0];
+			const int g = f.hitsActor ? 60 : kRing[c][1];
+			const int rb = f.hitsActor ? 30 : kRing[c][2];
 			Polyline(dl, f.ring, w, h, s.thickness * 0.8f, rr, g, rb, [&](std::size_t, std::size_t) { return o; });
 			// landing dot
 			const auto& last = f.path.empty() ? ArcState::ScreenPt{} : f.path.back();
@@ -92,8 +96,7 @@ namespace ArcDraw
 			ringArc(1.0f, Rgba(0, 0, 0, o * 0.45f), s.thickness + 3.0f);
 			if (f.charge > 0.001f) {
 				const bool full = f.charge >= 0.999f;
-				const ImU32 col = f.frost ? (full ? Rgba(200, 240, 255, o) : Rgba(110, 190, 255, o)) :
-				                            (full ? Rgba(255, 220, 120, o) : Rgba(255, 150, 40, o));
+				const ImU32 col = full ? Rgba((ar + 255) / 2, (ag + 255) / 2, (ab + 255) / 2, o) : Rgba(ar, ag, ab, o);
 				ringArc(std::clamp(f.charge, 0.0f, 1.0f), col, s.thickness + 1.0f);
 			}
 

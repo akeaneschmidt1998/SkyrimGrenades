@@ -1,21 +1,23 @@
 # Fire Pots
 
-Throwable fire and frost pots for Skyrim SE/AE (SKSE plugin, CommonLibSSE-NG). Wind up a throw,
-see exactly where it will land, and set the ground on fire.
+Throwable fire, frost, smoke and thunder pots for Skyrim SE/AE (SKSE plugin, CommonLibSSE-NG).
+Wind up a throw, see exactly where it will land, and set the ground on fire.
 
 **Controls**
 - **Pots are scrolls.** They sit in the Scrolls tab, can be bought, sold, stashed and found as loot,
   and can be favorited and **equipped to a hand** like any scroll (Favorites + number keys swap
   between them).
 - **With a pot in a hand, hold that hand's attack button** to wind up and **release** to throw.
-  Vanilla never casts it (the scroll never finishes charging); the throw is the mod's.
+  The hand comes up like readying a spell and the throw uses its release motion: the scroll is
+  really cast, but its spell does nothing and fires nothing; the pot you see flying is the mod's,
+  launched the moment the cast goes off, with your wind-up speed.
 - **Or hold G** to wind up and release to throw, with nothing equipped (uses the kind picked with
   V) or with a pot in hand (throws that one).
 - While winding up, an arc shows the flight, a ring shows the blast radius where it lands (red when
   it will hit someone directly), and a meter under the crosshair shows the wind-up and how many
   pots you have. 1 s to full; a full throw lands about 20 m away on flat ground.
 - **Tap** (or press block during a G wind-up) to cancel without using a pot.
-- **Press V** to switch Fire Pot / Frost Pot (swaps the pot in your hand if you're holding one).
+- **Press V** to switch pot kind (swaps the pot in your hand if you're holding one).
 - **Press H** to make pots (see below).
 
 ![Arc preview](docs/arc_preview.png)
@@ -30,6 +32,12 @@ thing it touches.
   small long-burning fire hazard).
 - **Frost Pot:** the same shatter with a frost burst (30 frost damage, which also drains stamina
   like frost spells) and a frost decal. No lingering patch.
+- **Smoke Pot:** a dust burst and a cloud that lingers 20 s (250-unit radius). Anyone inside is
+  invisible, refreshed every second while they stay in; like vanilla invisibility it ends the
+  moment they attack or cast. Silent to AI.
+- **Thunder Pot:** a lightning burst, a thunderclap and a white flash that blinds anyone within 700
+  units who's looking at it (you too). Everyone up to level 25 in the blast flees for 10 s. Loud:
+  AI nearby hears it.
 
 ## Making pots
 
@@ -52,17 +60,22 @@ spirits give nothing (vanilla has no empty bottles for them). If you already use
 Each menu has Back and Cancel, and long lists page after 8 entries. There are no recipes at the
 cooking pot.
 
-| Containers (any one) | Fire Pot fillings | Frost Pot fillings |
-|---|---|---|
-| Empty wine bottles (all four vanilla ones, the spiced wine bottle, Dawnguard's two) | Fire Salts, Dwarven Oil, Troll Fat (1 each) | Frost Salts, Ice Wraith Teeth (1 each) |
-| Clay and Nordic jugs, small and large; glazed jug | Charred Skeever Hide, Spriggan Sap (2 each) | |
-| Glazed and Nordic pots | Ash Creep Cluster, Ash Hopper Jelly, Burnt Spriggan Wood, Spawn Ash (2 each, Dragonborn) | |
+Containers (any one): empty wine bottles (the four vanilla ones, the spiced wine bottle,
+Dawnguard's two), clay and Nordic jugs, glazed jug, glazed and Nordic pots.
+
+| Pot | Fillings (how many per pot) |
+|---|---|
+| Fire | Fire Salts, Dwarven Oil, Troll Fat (1); Charred Skeever Hide, Spriggan Sap (2); Ash Creep Cluster, Ash Hopper Jelly, Burnt Spriggan Wood, Spawn Ash (2, Dragonborn) |
+| Frost | Frost Salts, Ice Wraith Teeth (1) |
+| Smoke | Charcoal (1), Tundra Cotton (2) |
+| Thunder | Void Salts, Glow Dust (1); Glowing Mushroom (2) |
 
 Both lists live in `FirePots.ini` (`[Containers]`, `[Fillings]`), so adding a modded bottle or a
 new filling is one line.
 
-**Where else they come from:** general goods merchants and apothecaries stock them, court wizards
-stock Frost Pots, and bandits and Forsworn sometimes carry Fire Pots (all set in `[Loot]`).
+**Where else they come from:** general goods merchants stock Fire, Frost (level 10+) and Smoke
+(level 5+); apothecaries stock Fire, Frost and Thunder (level 10+); court wizards stock Frost and
+Thunder; bandits carry Fire and Smoke, Forsworn Fire (all set in `[Loot]`).
 
 For testing: `help "fire pot" 4` (or `"frost pot"`) in the console gives the ID, then
 `player.additem <id> 10`.
@@ -161,9 +174,14 @@ Each step adds one thing. Log: `Documents/My Games/Skyrim Special Edition/SKSE/F
 - **How far NPCs notice a pot.** The flight and the shatter are now "silent" to AI (the sounds still
   play for you), so only what the blast actually hits should turn hostile. If enemies far away
   still come running, the burning patch (a vanilla hazard) is the next suspect.
-- **Equipped-pot input.** A pot in hand uses that hand's attack button; vanilla starts charging the
-  scroll at the same time but never finishes (300 s charge), so nothing else should happen. If a
-  scroll ever casts by itself, tell me.
+- **Hand throws ride on a scroll cast.** Releasing casts the scroll (0.3 s charge, an invisible
+  do-nothing projectile); the mod launches the real pot when it sees the scroll used up. If a pot
+  is ever used up with nothing thrown, or thrown twice, the log says which.
+- **Animation.** The throw uses the vanilla spell-release motion for that hand. A real overhand
+  throw can replace it through Open Animation Replacer (only while a pot is in that hand) once
+  there's a clip to use: see *Next*.
+- **Smoke and thunder visuals** are borrowed (a dragon-landing dust burst, a gas cloud, a mass
+  shock burst); `[Visuals]` swaps them.
 
 - **Pitch sign of `Projectile::Launch`.** Assumed Skyrim's convention (positive = down). If it's the
   other way the first throw goes the wrong way vertically; the flight check detects it, flips it and

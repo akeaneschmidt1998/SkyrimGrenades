@@ -28,7 +28,7 @@ namespace ArcState
 		std::vector<ScreenPt> ring;  // blast radius at the landing point
 		int                   potsLeft = 0;
 		std::string           potName = "Fire Pot";
-		bool                  frost = false;  // tint the arc blue
+		int                   color = 0;  // 0 fire (orange), 1 frost (blue), 2 smoke (grey), 3 thunder (yellow)
 	};
 
 	inline std::mutex g_lock;

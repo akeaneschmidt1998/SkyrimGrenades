@@ -49,6 +49,11 @@ namespace Config
 	inline std::string fireExplosionModel = "Skyrim.esm|070E5C";   // TrapOilLampExplosion01: fire burst + light
 	inline std::string frostPotModel = "Skyrim.esm|0B9BDE";        // GlazedJugSmall01
 	inline std::string frostExplosionModel = "Skyrim.esm|044089";  // ExplosionRuneFrost01: frost burst + light
+	inline std::string smokePotModel = "Skyrim.esm|0B9BD6";        // GlazedJugLarge01
+	inline std::string smokeExplosionModel = "Skyrim.esm|0D5100";  // FXDragonDustExplosion: a big dust cloud
+	inline std::string smokeCloudModel = "Skyrim.esm|106380";      // DA13PustuleGasCloud: the lingering cloud
+	inline std::string thunderPotModel = "Skyrim.esm|0F08F3";      // Nordic jug, small
+	inline std::string thunderExplosionModel = "Skyrim.esm|0D13E8";  // ExplosionShockMass01: lightning burst + light
 
 	// --- Crafting: what counts as a container / filling ("Plugin.esm|HEXID", fillings ", count") ---
 	// Repeatable INI keys (sContainer, sFireFilling, sFrostFilling) add entries; if the INI lists
@@ -57,7 +62,7 @@ namespace Config
 	{
 		std::string form;
 		int         count = 1;  // how many make one pot
-		int         type = 0;   // 0 = Fire Pot, 1 = Frost Pot
+		int         type = 0;   // 0 Fire, 1 Frost, 2 Smoke, 3 Thunder
 	};
 	inline std::vector<std::string> containers;
 	inline std::vector<Filling>     fillings;
@@ -72,12 +77,15 @@ namespace Config
 	struct Loot
 	{
 		std::string list;   // "Skyrim.esm|09AF0A"
-		int         type = 0;   // 0 = Fire Pot, 1 = Frost Pot
+		int         type = 0;   // 0 Fire, 1 Frost, 2 Smoke, 3 Thunder
 		int         level = 1;  // player level it starts showing up at
 		int         count = 1;
 	};
 	inline bool              addToLeveledLists = true;
-	inline std::vector<Loot> loot;  // sLoot = list, fire|frost, level, count
+	inline std::vector<Loot> loot;  // sLoot = list, fire|frost|smoke|thunder, level, count
+
+	// "fire" / "frost" / "smoke" / "thunder" -> type index (-1 = unknown)
+	int TypeFromWord(const std::string& a_word);
 
 	// --- Messages ---
 	inline bool printToConsole = true;

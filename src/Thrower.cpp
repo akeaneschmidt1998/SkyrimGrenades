@@ -374,7 +374,7 @@ namespace
 	{
 		ArcState::Frame frame;
 		frame.potName = CurrentType().name;
-		frame.frost = g_typeIndex == 1;
+		frame.color = CurrentType().color;
 		frame.active = true;
 		frame.charge = a_charge;
 		frame.speed = a_plan.speed;
@@ -417,7 +417,8 @@ namespace
 	}
 
 	// --- The throw -------------------------------------------------------------------------
-	void Launch(RE::PlayerCharacter* a_player, const Plan& a_plan, float a_charge)
+	// a_takeItem: false when vanilla already used the scroll up (thrown from a hand by casting it)
+	void Launch(RE::PlayerCharacter* a_player, const Plan& a_plan, float a_charge, bool a_takeItem = true)
 	{
 		auto& type = CurrentType();
 		auto* base = type.projectile;
@@ -441,7 +442,9 @@ namespace
 			logger::error("Projectile::Launch returned no projectile");
 			return;
 		}
-		a_player->RemoveItem(type.item, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+		if (a_takeItem) {
+			a_player->RemoveItem(type.item, 1, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
+		}
 
 		if (Config::autoCalibrate || g_gravityPerUnit <= 0.0f) {
 			g_flight = Flight{};
@@ -497,6 +500,20 @@ namespace
 	};
 	ThrowState g_throw;
 
+	// A pot thrown from a hand is a scroll cast: on release, vanilla plays the hand's release
+	// animation and uses the scroll up; when that happens (the count drops) the real pot is launched.
+	// Released too early (before the 0.3 s charge), vanilla cancels and nothing is used.
+	struct PendingCast
+	{
+		bool  active = false;
+		int   type = 0;
+		bool  leftHand = true;
+		float charge = 0.0f;
+		int   countBefore = 0;
+		float waited = 0.0f;
+	};
+	PendingCast g_pending;
+
 	void StopWinding()
 	{
 		g_throw.phase = Phase::kIdle;
@@ -524,6 +541,20 @@ namespace
 
 		TrackFlight(dt);
 		g_throw.cooldown = (std::max)(0.0f, g_throw.cooldown - dt);
+
+		if (g_pending.active) {
+			g_pending.waited += dt;
+			g_typeIndex = static_cast<std::size_t>(g_pending.type);
+			if (CountPots(a_player, CurrentType()) < g_pending.countBefore) {
+				g_pending.active = false;
+				if (const auto aim = GetAim(a_player, g_pending.leftHand)) {
+					Launch(a_player, MakePlan(*aim, g_pending.charge), g_pending.charge, false);
+				}
+			} else if (g_pending.waited > 0.75f) {
+				g_pending.active = false;  // vanilla cancelled the cast (released too soon, staggered...)
+				logger::info("Hand throw cancelled (the scroll wasn't cast)");
+			}
+		}
 
 		const bool keyPressed = g_input.pressed.exchange(false);
 		const bool handPressed[2] = { g_input.handPressed[0].exchange(false), g_input.handPressed[1].exchange(false) };
@@ -555,7 +586,7 @@ namespace
 			} else if (SelectCarriedType(a_player, true)) {
 				Report(fmt::format("{} ({})", CurrentType().name, CountPots(a_player, CurrentType())), true);
 			} else {
-				Report("You have no Fire Pots or Frost Pots.", true);
+				Report("You have no pots.", true);
 			}
 		}
 
@@ -585,7 +616,7 @@ namespace
 				}
 				return;
 			}
-			if (g_throw.cooldown > 0.0f) {
+			if (source == 0 && g_throw.cooldown > 0.0f) {
 				return;
 			}
 			if (source == 1 || source == 2) {
@@ -600,7 +631,7 @@ namespace
 				g_throw.leftHand = true;
 				const auto before = g_typeIndex;
 				if (!SelectCarriedType(a_player, false)) {
-					Report("You have no Fire Pots or Frost Pots.", true);
+					Report("You have no pots.", true);
 					return;
 				}
 				if (g_typeIndex != before) {
@@ -637,6 +668,12 @@ namespace
 		const Plan plan = MakePlan(*aim, charge);
 
 		if (!IsDown(g_throw.source)) {
+			if (g_throw.source != 0) {
+				// from a hand: vanilla casts the scroll now (with its release animation); launch then
+				g_pending = { true, static_cast<int>(g_typeIndex), g_throw.leftHand, charge, g_throw.pots, 0.0f };
+				StopWinding();
+				return;
+			}
 			// released: throw, unless it was only a tap
 			if (g_throw.held * 1000.0f < Config::minHoldMs) {
 				Report("Hold to wind up, release to throw.", true);
@@ -699,6 +736,7 @@ namespace Thrower
 	{
 		StopWinding();
 		g_flight = Flight{};
+		g_pending = PendingCast{};
 		g_input.keyDown = false;
 		g_input.pressed = false;
 		g_input.cycle = false;

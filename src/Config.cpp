@@ -39,12 +39,12 @@ namespace
 		else if (key == "icraftkey")          craftKey = static_cast<std::uint32_t>(std::stoul(val));
 		else if (key == "bcraftincombat")     craftInCombat = ParseBool(val);
 		else if (key == "scontainer")         containers.push_back(Unquote(val));
-		else if (key == "sfirefilling" || key == "sfrostfilling") {
+		else if (key == "sfirefilling" || key == "sfrostfilling" || key == "ssmokefilling" || key == "sthunderfilling") {
 			Filling f;
 			const auto comma = val.find(',');
 			f.form = Trim(Unquote(val.substr(0, comma)));
 			f.count = comma == std::string::npos ? 1 : std::clamp(std::stoi(val.substr(comma + 1)), 1, 99);
-			f.type = key == "sfrostfilling" ? 1 : 0;
+			f.type = TypeFromWord(key.substr(1, key.size() - 8));  // "sSmokeFilling" -> "smoke"
 			fillings.push_back(std::move(f));
 		}
 		else if (key == "breturnemptybottles")  returnEmptyBottles = ParseBool(val);
@@ -71,7 +71,10 @@ namespace
 			}
 			Loot l;
 			l.list = parts[0];
-			l.type = Lower(parts[1]).starts_with("frost") ? 1 : 0;
+			l.type = TypeFromWord(parts[1]);
+			if (l.type < 0) {
+				throw std::invalid_argument("type must be fire, frost, smoke or thunder");
+			}
 			l.level = std::clamp(std::stoi(parts[2]), 1, 255);
 			l.count = std::clamp(std::stoi(parts[3]), 1, 100);
 			loot.push_back(std::move(l));
@@ -103,6 +106,11 @@ namespace
 		else if (key == "sfireexplosionmodel" || key == "sexplosionmodel") fireExplosionModel = Unquote(val);
 		else if (key == "sfrostpotmodel")       frostPotModel = Unquote(val);
 		else if (key == "sfrostexplosionmodel") frostExplosionModel = Unquote(val);
+		else if (key == "ssmokepotmodel")       smokePotModel = Unquote(val);
+		else if (key == "ssmokeexplosionmodel") smokeExplosionModel = Unquote(val);
+		else if (key == "ssmokecloudmodel")     smokeCloudModel = Unquote(val);
+		else if (key == "sthunderpotmodel")     thunderPotModel = Unquote(val);
+		else if (key == "sthunderexplosionmodel") thunderExplosionModel = Unquote(val);
 		else if (key == "bprinttoconsole")    printToConsole = ParseBool(val);
 		else if (key == "bshownotification")  showNotification = ParseBool(val);
 		else logger::warn("Unknown INI key '{}'", key);
@@ -142,6 +150,16 @@ namespace
 
 namespace Config
 {
+	int TypeFromWord(const std::string& a_word)
+	{
+		const auto w = Lower(Trim(a_word));
+		if (w.starts_with("fire")) return 0;
+		if (w.starts_with("frost")) return 1;
+		if (w.starts_with("smoke")) return 2;
+		if (w.starts_with("thunder")) return 3;
+		return -1;
+	}
+
 	void Load()
 	{
 		containers.clear();
@@ -180,6 +198,15 @@ namespace Config
 			fillings.push_back({ "Skyrim.esm|03AD5F", 1, 1 });  // Frost Salts
 			fillings.push_back({ "Skyrim.esm|03AD6A", 1, 1 });  // Ice Wraith Teeth
 		}
+		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 2; })) {
+			fillings.push_back({ "Skyrim.esm|033760", 1, 2 });  // Charcoal
+			fillings.push_back({ "Skyrim.esm|03F7F8", 2, 2 });  // Tundra Cotton
+		}
+		if (std::ranges::none_of(fillings, [](const Filling& f) { return f.type == 3; })) {
+			fillings.push_back({ "Skyrim.esm|03AD60", 1, 3 });  // Void Salts
+			fillings.push_back({ "Skyrim.esm|03AD73", 1, 3 });  // Glow Dust
+			fillings.push_back({ "Skyrim.esm|07EE01", 2, 3 });  // Glowing Mushroom
+		}
 		if (loot.empty()) {
 			loot = {
 				{ "Skyrim.esm|09AF0A", 0, 1, 3 },   // general goods merchants
@@ -189,6 +216,10 @@ namespace Config
 				{ "Skyrim.esm|105240", 1, 1, 2 },   // court wizards' scroll stock
 				{ "Skyrim.esm|10E0DD", 0, 1, 1 },   // bandit random loot
 				{ "Skyrim.esm|10FAB6", 0, 1, 1 },   // Forsworn random loot
+				{ "Skyrim.esm|09AF0A", 2, 5, 2 },   // smoke: general goods
+				{ "Skyrim.esm|10E0DD", 2, 5, 1 },   // smoke: bandits
+				{ "Skyrim.esm|09AF13", 3, 10, 1 },  // thunder: apothecaries
+				{ "Skyrim.esm|105240", 3, 10, 1 },  // thunder: court wizards
 			};
 		}
 		logger::info("Crafting: key {}, {} containers, {} fillings, in combat: {}", craftKey, containers.size(), fillings.size(), craftInCombat);

@@ -78,6 +78,16 @@ namespace
 			}
 		}
 
+		if (a_type.hazardId && a_type.hazardModel) {
+			if (auto* hazard = a_dh->LookupForm<RE::BGSHazard>(a_type.hazardId, Forms::kPlugin)) {
+				const auto mesh = ResolveModel(*a_type.hazardModel);
+				if (!mesh.empty()) {
+					hazard->SetModel(mesh.c_str());
+				}
+				logger::info("{} cloud model '{}' (from {})", a_type.name, mesh, *a_type.hazardModel);
+			}
+		}
+
 		logger::info("{} ready: item {:08X}, projectile {:08X}, explosion {:08X} (radius {}, placed {:08X}); "
 					 "pot model '{}' (from {}), burst model '{}' (from {})",
 			a_type.name, a_type.item->GetFormID(), a_type.projectile->GetFormID(), a_type.explosion->GetFormID(),
@@ -95,8 +105,10 @@ namespace Forms
 	std::vector<PotType>& Types()
 	{
 		static std::vector<PotType> types{
-			PotType{ "Fire Pot", 0x820, 0x800, &Config::firePotModel, &Config::fireExplosionModel },
-			PotType{ "Frost Pot", 0x830, 0x810, &Config::frostPotModel, &Config::frostExplosionModel },
+			PotType{ "Fire Pot", 0x820, 0x800, &Config::firePotModel, &Config::fireExplosionModel, 0, nullptr, 0 },
+			PotType{ "Frost Pot", 0x830, 0x810, &Config::frostPotModel, &Config::frostExplosionModel, 0, nullptr, 1 },
+			PotType{ "Smoke Pot", 0x858, 0x850, &Config::smokePotModel, &Config::smokeExplosionModel, 0x855, &Config::smokeCloudModel, 2 },
+			PotType{ "Thunder Pot", 0x868, 0x860, &Config::thunderPotModel, &Config::thunderExplosionModel, 0, nullptr, 3 },
 		};
 		return types;
 	}
