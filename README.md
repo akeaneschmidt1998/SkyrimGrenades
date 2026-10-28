@@ -38,9 +38,9 @@ thing it touches.
 
 It always opens, even with nothing usable, so it's also the list of what pots can be made from.
 
-**Empty bottles come back when you drink.** Wines give their matching empty bottle; mead, ale and
-spirits give an empty wine bottle (vanilla has no empty mead bottle); modded drinks that reuse a
-vanilla bottle model are matched automatically. If you already use a bottle-return mod, set
+**Empty bottles come back when you drink wine.** Each wine gives its matching empty bottle, and
+modded drinks that use a vanilla wine bottle model are matched automatically. Mead, ale and
+spirits give nothing (vanilla has no empty bottles for them). If you already use a bottle-return mod, set
 `bReturnEmptyBottles = 0` so you don't get two.
 
 Each menu has Back and Cancel, and long lists page after 8 entries. There are no recipes at the

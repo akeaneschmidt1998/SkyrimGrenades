@@ -63,21 +63,6 @@ namespace
 				{ "HearthFires.esm|003536", "Dawnguard.esm|0093F5" },  // HearthFire wine bottles
 				{ "HearthFires.esm|003535", "Dawnguard.esm|0093F6" },
 				{ "Dragonborn.esm|0320DF", "Skyrim.esm|0F2013" },  // Emberbrand Wine
-				// no empty mead/ale/spirits bottles in vanilla: an empty wine bottle stands in
-				{ "Skyrim.esm|034C5D", "Skyrim.esm|0F2013" },      // Nord Mead
-				{ "Skyrim.esm|0508CA", "Skyrim.esm|0F2013" },      // Honningbrew Mead
-				{ "Skyrim.esm|02C35A", "Skyrim.esm|0F2013" },      // Black-Briar Mead
-				{ "Skyrim.esm|0F693F", "Skyrim.esm|0F2013" },      // Black-Briar Reserve
-				{ "Skyrim.esm|0555E8", "Skyrim.esm|0F2013" },      // Dragon's Breath Mead
-				{ "Skyrim.esm|107A8A", "Skyrim.esm|0F2013" },      // Juniper Berry Mead
-				{ "Skyrim.esm|034C5E", "Skyrim.esm|0F2013" },      // Ale
-				{ "Skyrim.esm|0B91D7", "Skyrim.esm|0F2013" },      // Cyrodilic Brandy
-				{ "Dragonborn.esm|03572F", "Skyrim.esm|0F2013" },  // Ashfire Mead
-				{ "Dragonborn.esm|0207E6", "Skyrim.esm|0F2013" },  // Sujamma
-				{ "Dragonborn.esm|024E0B", "Skyrim.esm|0F2013" },  // Sujamma (quest copy)
-				{ "Dragonborn.esm|0207E5", "Skyrim.esm|0F2013" },  // Flin
-				{ "Dragonborn.esm|0248CC", "Skyrim.esm|0F2013" },  // Shein
-				{ "Dragonborn.esm|0248CE", "Skyrim.esm|0F2013" },  // Matze
 			};
 			// clang-format on
 			for (const auto& [drink, empty] : builtIn) {
@@ -85,14 +70,15 @@ namespace
 			}
 		}
 		if (Config::matchBottlesByModel) {
-			// every container whose model says "Empty", keyed by the model without that word
+			// empty wine bottles, keyed by their model without the word "Empty"
 			std::unordered_map<std::string, RE::TESBoundObject*> empties;
 			for (const auto& ref : Config::containers) {
 				auto* form = Forms::Lookup(ref);
 				auto* obj = form ? form->As<RE::TESBoundObject>() : nullptr;
 				auto* model = form ? skyrim_cast<RE::TESModel*>(form) : nullptr;
 				const char* path = model ? model->GetModel() : nullptr;
-				if (obj && path && Lower(path).find("empty") != std::string::npos) {
+				const auto lower = Lower(path ? path : "");
+				if (obj && lower.find("empty") != std::string::npos && lower.find("wine") != std::string::npos) {
 					empties.emplace(ModelKey(path), obj);
 				}
 			}
