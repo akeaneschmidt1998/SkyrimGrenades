@@ -6,7 +6,8 @@ strength; throw them with a wind-up, or set tripwires.
 ## Bombs
 
 A bomb is **trigger × payload × strength**, and every combination is its own item
-("Moderate Fire Bomb (Short Fuse)"): 4 triggers × 7 payloads × 3 strengths = 84 kinds.
+("Moderate Fire Bomb (Short Fuse)"): 5 triggers × 7 payloads × 3 strengths = 105 kinds. Every
+description gives the numbers (damage, radius, duration).
 
 | Trigger | What it does | Made with (per mild bomb) |
 |---|---|---|
@@ -14,6 +15,7 @@ A bomb is **trigger × payload × strength**, and every combination is its own i
 | Short fuse (thrown) | a real physics object: bounces, rolls, comes to rest; bursts 2 s after the throw | 1 Paper Roll, 1 Charcoal |
 | Long fuse (thrown) | the same, bursts 4.5 s after the throw | 2 Paper Roll, 1 Charcoal |
 | Tripwire (placed) | set down on the ground ahead of you; bursts when someone comes within ~1.7 m | a wire (Linen Wrap, Leather Strips or Leather) and an igniter (Fire Salts, Dwarven Gear or Dwarven Gyro) |
+| Volatile (placed) | set down (or just dropped from your pack); bursts when struck by a weapon, arrow, spell or another bomb's blast, so they chain. Pick one up to disarm it | 1 Fire Salts |
 
 | Payload | What it does | Filling (any one, per mild bomb) |
 |---|---|---|
@@ -27,17 +29,21 @@ A bomb is **trigger × payload × strength**, and every combination is its own i
 
 | Strength | Ingredients | Effect |
 |---|---|---|
-| Mild | as listed | 2 m blast |
-| Moderate | 2× everything (not the container) | 3 m blast, double damage, longer effects |
-| Major | 3× | 4 m blast, triple damage, longest effects |
+| Mild | as listed | 2 m blast (concussion 3.5 m) |
+| Moderate | 2× everything (not the container) | 3 m blast (5.3 m), double damage, longer effects |
+| Major | 3× | 4 m blast (7 m), triple damage, longest effects |
+
+**Prices** come from the ingredients: what the cheapest way to make it is worth, × 1.25
+(`fValueMult`). **Making bombs trains Alchemy** like brewing does: each bomb gives its price as
+Alchemy practice (`fAlchemyXPMult`).
 
 Every bomb also takes **one empty container**: any empty wine bottle, clay or Nordic jug, glazed or
 Nordic pot. It's picked for you. **Drinking wine gives its empty bottle back.**
 
 **Getting bombs:** make them anywhere with **H**, or buy them: general goods merchants (fire, frag,
 oil, tripwires), apothecaries (fire, frost, fear, frenzy), court wizards (concussion, fear,
-frost). Bandits
-and Forsworn carry a few. All in `[Loot]`.
+frost). Bandits and Forsworn carry a few, and they're in the **random potion loot** (the list
+chests, barrels and enemies draw potions from). All in `[Loot]`.
 
 ## Controls
 
@@ -111,7 +117,8 @@ build\release\arc_preview.exe .
 
 Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 
-1. Log shows `FirePots loaded`, `84 of 84 bombs ready`, `Leveled lists: 15 entries added`,
+1. Log shows `FirePots loaded`, `105 of 105 bombs ready`, `Prices set for 105 bombs`, `Leveled
+   lists: 22 entries added`, ten `Debug Smoke N: ...` lines, `Watching hits`,
    `menu font: Data/SKSE/Plugins/FirePots/MenuFont.ttf`, `Watching for MCM changes`. The MCM lists *Fire Pots* with three pages.
 2. Press H: the game pauses and the bomb-making table opens with a cursor. With nothing in your
    pack every count is 0 and *Craft* is greyed; the right side still lists what each bomb takes.
@@ -126,8 +133,13 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
    off. (Check whether walking over your own sets it off, and tell me.)
 7. Oil then fire on the same spot: the slick slows; the fire bomb sets it ablaze (log: `Oil slick
    ... ignited`).
-8. Fear / frenzy on a group of bandits; concussion staggers everything in a wide ring and is loud.
-9. Equip a bomb to the left hand, hold right-click, release: the hand's release motion, the bomb
+8. Volatile: set one down (G or a hand), walk off, shoot it with an arrow: it bursts. Two side by
+   side: hitting one sets off the other a beat later. Picking one up gives it back.
+9. Debug smoke bombs (Scrolls tab, *Debug Smoke 1: ...* to *10*): throw each and note which
+   cloud looks right; the INI line for each is in `[Debug]`.
+10. Make a few bombs: the Alchemy bar moves (log: `Alchemy practice: ...`).
+11. Fear / frenzy on a group of bandits; concussion staggers everything in a wide ring and is loud.
+12. Equip a bomb to the left hand, hold right-click, release: the hand's release motion, the bomb
     flies. V swaps the bomb in the hand.
 
 ## Known unknowns (only an in-game test can settle these)
@@ -137,6 +149,9 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 - **Fuse bombs' preview** shows the first bounce, not where they roll to.
 - **Fuse bombs at 70% size**: the model shrinks, but the engine may keep the collision full size,
   so a resting jug can float a hair above the ground. `fProjectileScale = 1` if it bothers you.
+- **Volatile bombs and hits**: they rely on the engine sending a hit event for a struck item lying
+  in the world. Arrows and spells should; melee swings at clutter might not. Bombs bursting
+  nearby always set them off (the mod checks that itself).
 - **Oil only ignites from fire bombs**, not fire spells, torches or enchanted weapons yet.
 - **Hand throws ride on a scroll cast** (0.3 s charge, an invisible do-nothing projectile); the
   mod launches the real bomb when it sees the scroll used up.
@@ -146,10 +161,8 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 ## To do
 
 - **Smoke bombs** (removed for now: the cloud borrowed a vanilla model that turned out to be
-  rocks). They come back once there's a real smoke effect to show; vanilla has candidates
-  (`FXSmokeSmokeLgVol`, the `FXMistLowSmokey` set) that need checking in game. Charcoal / Tundra
-  Cotton fillings and the hide-and-choke effect are ready to return with it; form IDs stay
-  reserved.
+  rocks). The ten debug smoke bombs try candidate looks; once one is picked, smoke comes back
+  with Charcoal / Tundra Cotton fillings and the hide-and-choke effect (form IDs stay reserved).
 - A real overhand throw animation through Open Animation Replacer (needs your
   `Skyrim - Animations.bsa`).
 - NPC bombers.

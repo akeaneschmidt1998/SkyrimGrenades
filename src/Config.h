@@ -54,6 +54,7 @@ namespace Config
 		"Skyrim.esm|0B9BDE",  // short fuse: small clay jug
 		"Skyrim.esm|0B9BD6",  // long fuse: large clay jug
 		"Skyrim.esm|0F08F6",  // tripwire: Nordic pot
+		"Skyrim.esm|0B9BD4",  // volatile: glazed pot (the other one)
 	};
 	inline std::string explosionModel[Bombs::kPayloads]{
 		"Skyrim.esm|088109",  // frag: FallingDustExplosion01
@@ -79,6 +80,19 @@ namespace Config
 	inline std::vector<std::string> containers;         // any one (sContainer)
 	inline std::vector<Ingredient>  triggerIngredients;  // every line needed; "or" = alternatives
 	inline std::vector<Ingredient>  fillings;            // any one line per payload (sFragFilling, ...)
+	// A bomb's price = what its ingredients are worth (cheapest of each choice) x this
+	inline float valueMult = 1.25f;
+	// Alchemy skill use per bomb made = its price x this (vanilla potions give their price)
+	inline float alchemyXPMult = 1.0f;
+
+	// --- Debug: smoke bombs, one per candidate smoke look ---
+	struct DebugSmoke
+	{
+		std::string form;   // "Plugin.esm|HEXID": a moveable static / activator (the cloud) or an explosion (the burst)
+		std::string label;  // shown in the item name
+	};
+	inline bool                    giveDebugSmokeBombs = true;  // top up to 5 of each on every load
+	inline std::vector<DebugSmoke> debugSmokes;                 // sDebugSmoke = form, label (up to 10)
 
 	// --- Bottle return: drinking wine gives the empty bottle back ---
 	inline bool returnEmptyBottles = true;

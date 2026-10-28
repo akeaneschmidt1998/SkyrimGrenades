@@ -123,6 +123,7 @@ namespace
 		m.trigger[Bombs::kShortFuse] = { { { { paper, 1 } } }, { { { charcoal, 1 } } } };
 		m.trigger[Bombs::kLongFuse] = { { { { paper, 2 } } }, { { { charcoal, 1 } } } };
 		m.trigger[Bombs::kTripwire] = { { { { linen, 1 }, { leather, 1 } } }, { { { fireSalts, 1 }, { gear, 1 } } } };
+		m.trigger[Bombs::kVolatile] = { { { { fireSalts, 1 } } } };
 		m.fillings[Bombs::kFrag] = { { item("Nails", 12), 1 }, { item("Quarried Stone", 0), 1 } };
 		m.fillings[Bombs::kFire] = { { fireSalts, 1 }, { item("Charred Skeever Hide", 3), 2 }, { item("Spawn Ash", 0), 2 } };
 		m.fillings[Bombs::kFrost] = { { item("Frost Salts", 2), 1 }, { item("Ice Wraith Teeth", 0), 1 }, { item("Frost Mirriam", 1), 2 } };
@@ -184,6 +185,9 @@ int main(int argc, char** argv)
 	CraftUI::State b;
 	b.trigger = Bombs::kTripwire; b.payload = Bombs::kFrag; b.strength = Bombs::kMild;
 	RenderCase(outDir, "2_tripwire_frag", m, b);
+	CraftUI::State v;
+	v.trigger = Bombs::kVolatile; v.payload = Bombs::kOil; v.strength = Bombs::kMild;
+	RenderCase(outDir, "4_volatile_oil", m, v);
 	CraftUI::State c;
 	c.trigger = Bombs::kImpact; c.payload = Bombs::kFear; c.strength = Bombs::kMajor;
 	RenderCase(outDir, "3_cant_make", m, c);

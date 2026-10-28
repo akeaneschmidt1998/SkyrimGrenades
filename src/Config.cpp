@@ -159,6 +159,13 @@ namespace
 		else if (key == "bcalibratespeed")    calibrateSpeed = ParseBool(val);
 		else if (key == "ssmokecloudmodel")   {}  // smoke is out for now
 		else if (key == "smenufont")          menuFont = Unquote(val);
+		else if (key == "fvaluemult")         valueMult = std::clamp(std::stof(val), 0.0f, 100.0f);
+		else if (key == "falchemyxpmult")     alchemyXPMult = std::clamp(std::stof(val), 0.0f, 100.0f);
+		else if (key == "bgivedebugsmokebombs") giveDebugSmokeBombs = ParseBool(val);
+		else if (key == "sdebugsmoke") {
+			const auto parts = SplitComma(val);
+			debugSmokes.push_back({ Unquote(parts[0]), parts.size() > 1 ? parts[1] : parts[0] });
+		}
 		else if (key == "soilfiremodel")      oilFireModel = Unquote(val);
 		else if (key == "breturnemptybottles")  returnEmptyBottles = ParseBool(val);
 		else if (key == "busebuiltinbottles")   useBuiltInBottles = ParseBool(val);
@@ -250,6 +257,7 @@ namespace
 			{ { "Skyrim.esm|034CD6", "Skyrim.esm|0800E4", "Skyrim.esm|0DB5D2" }, 1, B::kTripwire },
 			// the igniter: Fire Salts, or Dwemer clockwork (a gear or a gyro)
 			{ { "Skyrim.esm|03AD5E", "Skyrim.esm|0C8861", "Skyrim.esm|0C8868" }, 1, B::kTripwire },
+			{ { "Skyrim.esm|03AD5E" }, 1, B::kVolatile },   // Fire Salts
 		};
 		for (int t = 0; t < Bombs::kTriggers; ++t) {
 			if (noneFor(triggerIngredients, t)) {
@@ -321,6 +329,28 @@ namespace
 				L("Skyrim.esm|10E0DD", B::kShortFuse, P::kFrag, S::kMild, 5, 1),
 				L("Skyrim.esm|10FAB6", B::kImpact, P::kFire, S::kMild, 1, 1),
 				L("Skyrim.esm|10FAB6", B::kTripwire, P::kFrag, S::kMild, 5, 1),
+				// random potion loot (LItemPotionAll: chests, barrels, enemies' potions)
+				L("Skyrim.esm|0E3E99", B::kImpact, P::kFire, S::kMild, 1, 1),
+				L("Skyrim.esm|0E3E99", B::kImpact, P::kFrost, S::kMild, 1, 1),
+				L("Skyrim.esm|0E3E99", B::kShortFuse, P::kFrag, S::kMild, 1, 1),
+				L("Skyrim.esm|0E3E99", B::kImpact, P::kOil, S::kMild, 3, 1),
+				L("Skyrim.esm|0E3E99", B::kVolatile, P::kFire, S::kMild, 5, 1),
+				L("Skyrim.esm|0E3E99", B::kImpact, P::kFear, S::kModerate, 12, 1),
+				L("Skyrim.esm|0E3E99", B::kImpact, P::kConcussion, S::kModerate, 15, 1),
+			};
+		}
+		if (debugSmokes.empty()) {
+			debugSmokes = {
+				{ "Skyrim.esm|0B949F", "Smoke, large volume" },          // FXSmokeSmokeLgVol
+				{ "Skyrim.esm|0B9496", "Smoke, large 1x1" },             // FXSmokeSmokeLg1x1
+				{ "Skyrim.esm|01643C", "Smoke wisps" },                  // FXSmokeWispsLgVolAdjust
+				{ "Skyrim.esm|0D5E82", "Smoke, large close" },           // FXSmokeLargeClose01
+				{ "Skyrim.esm|0D6012", "Burning smoke" },                // BFXSmokeBurningVol
+				{ "Skyrim.esm|0B946C", "Low smoky mist" },               // FXMistLowSmokey01
+				{ "Skyrim.esm|030B39", "Steam billow" },                 // FXSteamBillow
+				{ "Skyrim.esm|0B93DB", "Wet mist volume" },              // FXSmokeWetMistLgVol01
+				{ "Dragonborn.esm|026629", "Steam burst (explosion)" },  // DLC2KagrumezSteamExplosion
+				{ "Skyrim.esm|0A036F", "Gas trap (explosion)" },         // TrapPoisonGasExplosion01
 			};
 		}
 	}
@@ -335,6 +365,7 @@ namespace Config
 		fillings.clear();
 		bottles.clear();
 		loot.clear();
+		debugSmokes.clear();
 		if (!ReadIni(kMainIni)) {
 			logger::warn("{} not found, using defaults", kMainIni.string());
 		}

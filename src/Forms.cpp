@@ -64,7 +64,7 @@ namespace Forms
 	std::vector<PotType>& Types()
 	{
 		static std::vector<PotType> types = [] {
-			std::vector<PotType> v(Bombs::kCount);
+			std::vector<PotType> v(Bombs::kCount + Bombs::kDebugSmokes);
 			for (int i = 0; i < Bombs::kCount; ++i) {
 				v[i].index = i;
 				v[i].trigger = Bombs::TriggerOf(i);
@@ -72,14 +72,85 @@ namespace Forms
 				v[i].strength = Bombs::StrengthOf(i);
 				v[i].name = Bombs::Name(i);
 			}
+			for (int k = 0; k < Bombs::kDebugSmokes; ++k) {
+				auto& d = v[Bombs::kCount + k];
+				d.index = Bombs::kCount + k;
+				d.trigger = Bombs::kImpact;
+				d.payload = Bombs::kSmoke;
+				d.strength = Bombs::kModerate;
+				d.name = "Debug Smoke Bomb " + std::to_string(k + 1);
+				d.debug = true;
+			}
 			return v;
 		}();
 		return types;
 	}
 
+	int DebugIndex(int k) { return Bombs::kCount + k; }
+
 	bool Ready()
 	{
 		return std::ranges::any_of(Types(), [](const PotType& t) { return t.Ready(); });
+	}
+
+	namespace
+	{
+		int Worth(const std::string& a_ref)
+		{
+			auto* form = ParseFormRef(a_ref);
+			return form ? (std::max)(0, form->GetGoldValue()) : -1;
+		}
+
+		// Cheapest way to fill one ingredient line: value x count (-1 = none of its forms exist)
+		int Cheapest(const Config::Ingredient& a_line)
+		{
+			int best = -1;
+			for (const auto& f : a_line.forms) {
+				if (const int v = Worth(f); v >= 0 && (best < 0 || v * a_line.count < best)) {
+					best = v * a_line.count;
+				}
+			}
+			return best;
+		}
+	}
+
+	void SetPrices()
+	{
+		int container = -1;
+		for (const auto& c : Config::containers) {
+			if (const int v = Worth(c); v >= 0 && (container < 0 || v < container)) {
+				container = v;
+			}
+		}
+		container = (std::max)(container, 0);
+		int trigger[Bombs::kT]{};
+		for (const auto& line : Config::triggerIngredients) {
+			if (line.group >= 0 && line.group < Bombs::kT) {
+				trigger[line.group] += (std::max)(Cheapest(line), 0);
+			}
+		}
+		int filling[Bombs::kP];
+		std::fill(std::begin(filling), std::end(filling), -1);
+		for (const auto& line : Config::fillings) {
+			if (line.group >= 0 && line.group < Bombs::kP) {
+				if (const int v = Cheapest(line); v >= 0 && (filling[line.group] < 0 || v < filling[line.group])) {
+					filling[line.group] = v;
+				}
+			}
+		}
+		int set = 0;
+		for (auto& t : Types()) {
+			if (t.debug || !t.Ready()) {
+				continue;
+			}
+			const int   mult = t.strength + 1;
+			const float worth = static_cast<float>(container + (trigger[t.trigger] + (std::max)(filling[t.payload], 0)) * mult);
+			t.item->value = (std::max)(1, static_cast<int>(std::lround(worth * Config::valueMult)));
+			++set;
+		}
+		const auto& example = Types()[Bombs::Index(Bombs::kImpact, Bombs::kFire, Bombs::kMild)];
+		logger::info("Prices set for {} bombs from their ingredients (x{}); e.g. {}: {} gold", set, Config::valueMult, example.name,
+			example.item ? example.item->value : 0);
 	}
 
 	bool Load()
@@ -92,8 +163,8 @@ namespace Forms
 		int ready = 0;
 		int wanted = 0;
 		for (auto& t : Types()) {
-			if (!Bombs::Available(t.payload)) {
-				continue;  // smoke: out for now
+			if (t.debug || !Bombs::Available(t.payload)) {
+				continue;  // smoke: out for now (the debug smoke bombs are loaded below)
 			}
 			++wanted;
 			t.item = dh->LookupForm<RE::ScrollItem>(Bombs::ItemId(t.index), kPlugin);
@@ -137,6 +208,37 @@ namespace Forms
 			}
 			logger::info("{} burst model '{}' (from {})", Bombs::kPayloadNames[p], mesh, Config::explosionModel[p]);
 		}
+		// debug smoke bombs: each gets one candidate look
+		for (int k = 0; k < Bombs::kDebugSmokes; ++k) {
+			auto& d = Types()[DebugIndex(k)];
+			d.item = dh->LookupForm<RE::ScrollItem>(Bombs::DebugItemId(k), kPlugin);
+			d.projectile = dh->LookupForm<RE::BGSProjectile>(Bombs::DebugProjectileId(k), kPlugin);
+			d.explosion = dh->LookupForm<RE::BGSExplosion>(Bombs::DebugExplosionId(k), kPlugin);
+			auto* hazard = dh->LookupForm<RE::BGSHazard>(Bombs::DebugHazardId(k), kPlugin);
+			if (!d.Ready() || !hazard) {
+				continue;
+			}
+			if (const auto mesh = ResolveModel(Config::triggerModel[Bombs::kImpact]); !mesh.empty()) {
+				d.item->SetModel(mesh.c_str());
+				d.projectile->SetModel(mesh.c_str());
+			}
+			if (k >= static_cast<int>(Config::debugSmokes.size())) {
+				continue;
+			}
+			const auto&  cand = Config::debugSmokes[k];
+			RE::TESForm* source = nullptr;
+			const auto   mesh = ResolveModel(cand.form, &source);
+			if (auto* ex = source ? source->As<RE::BGSExplosion>() : nullptr) {
+				d.explosion->SetModel(mesh.c_str());  // an explosion: its burst (the cloud stays invisible)
+				d.explosion->data.light = ex->data.light;
+			} else {
+				hazard->SetModel(mesh.c_str());  // anything else: the lingering cloud
+			}
+			d.name = "Debug Smoke " + std::to_string(k + 1) + ": " + cand.label;
+			d.item->fullName = d.name.c_str();
+			logger::info("{}: '{}' (from {})", d.name, mesh, cand.form);
+		}
+
 		oilFireProjectile = dh->LookupForm<RE::BGSProjectile>(Bombs::kOilFireProjectileId, kPlugin);
 		if (oilFireProjectile && oilFireProjectile->data.explosionType) {
 			SetModelFrom(oilFireProjectile->data.explosionType, Config::oilFireModel, "Burning oil");

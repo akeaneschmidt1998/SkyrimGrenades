@@ -34,6 +34,8 @@ namespace
 			break;
 		case SKSE::MessagingInterface::kDataLoaded:
 			Forms::Load();
+			Forms::SetPrices();
+			Thrower::RegisterEvents();
 			BottleReturn::Init();
 			LeveledLists::Inject();
 			McmReload::Register();
@@ -46,6 +48,9 @@ namespace
 		case SKSE::MessagingInterface::kNewGame:
 			Thrower::Reset();
 			Overlay::Install();  // retry in case the renderer wasn't ready at kDataLoaded
+			if (a_msg->type != SKSE::MessagingInterface::kPreLoadGame) {
+				Thrower::GiveDebugBombs();
+			}
 			break;
 		default:
 			break;

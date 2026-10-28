@@ -1,6 +1,7 @@
 #pragma once
-// The bomb catalogue: trigger x payload x strength, numbered exactly as tools/MakePlugin does.
-// Plain std only.
+// The bomb catalogue: trigger x payload x strength, numbered exactly as tools/MakePlugin does,
+// and the numbers the descriptions quote (kept in step with the plugin's records by hand: if you
+// change a damage or radius here, change it in tools/MakePlugin/Program.cs too). Plain std only.
 //
 // Two numberings:
 //   dense index  (t * kPayloads + p) * kStrengths + s      - Forms::Types() order, loot, menus
@@ -10,20 +11,21 @@
 
 #include <array>
 #include <cctype>
+#include <cstdio>
 #include <optional>
 #include <string>
 #include <string_view>
 
 namespace Bombs
 {
-	enum Trigger : int { kImpact, kShortFuse, kLongFuse, kTripwire, kTriggers };
+	enum Trigger : int { kImpact, kShortFuse, kLongFuse, kTripwire, kVolatile, kTriggers };
 	enum Payload : int { kFrag, kFire, kFrost, kOil, kSmoke, kFear, kFrenzy, kConcussion, kPayloads };
 	enum Strength : int { kMild, kModerate, kMajor, kStrengths };
 
 	inline constexpr int kT = kTriggers, kP = kPayloads, kS = kStrengths;
-	inline constexpr int kCount = kT * kP * kS;  // 96
+	inline constexpr int kCount = kT * kP * kS;  // 120 (smoke's 15 aren't in the game)
 
-	inline constexpr std::array<std::string_view, kT> kTriggerNames{ "Impact", "Short Fuse", "Long Fuse", "Tripwire" };
+	inline constexpr std::array<std::string_view, kT> kTriggerNames{ "Impact", "Short Fuse", "Long Fuse", "Tripwire", "Volatile" };
 	inline constexpr std::array<std::string_view, kP> kPayloadNames{ "Frag", "Fire", "Frost", "Oil", "Smoke", "Fear", "Frenzy", "Concussion" };
 	inline constexpr std::array<std::string_view, kS> kStrengthNames{ "Mild", "Moderate", "Major" };
 
@@ -39,10 +41,16 @@ namespace Bombs
 	constexpr unsigned ProjectileId(int a_index) { return 0xB00u + Slot(a_index); }
 	constexpr unsigned ExplosionId(int a_payload, int a_strength) { return 0xC80u + static_cast<unsigned>(a_payload * 3 + a_strength); }
 	constexpr unsigned EnchantId(int a_payload, int a_strength) { return 0xCB0u + static_cast<unsigned>(a_payload * 3 + a_strength); }
-	constexpr unsigned SmokeCloudId(int a_strength) { return 0xCE0u + static_cast<unsigned>(a_strength); }
 	inline constexpr unsigned kOilFireProjectileId = 0xCF4;
 
-	// Blast radius per strength (the ring the preview draws); concussion is 1.75x wider.
+	// Debug smoke bombs: one per candidate smoke effect, to try them out (FirePots.ini [Debug]).
+	inline constexpr int kDebugSmokes = 10;
+	constexpr unsigned DebugHazardId(int k) { return 0xD10u + static_cast<unsigned>(k); }
+	constexpr unsigned DebugExplosionId(int k) { return 0xD20u + static_cast<unsigned>(k); }
+	constexpr unsigned DebugProjectileId(int k) { return 0xD30u + static_cast<unsigned>(k); }
+	constexpr unsigned DebugItemId(int k) { return 0xD50u + static_cast<unsigned>(k); }
+
+	// --- Numbers (game units; 70 units ~ 1 m) ---
 	constexpr float BlastRadius(int a_payload, int a_strength)
 	{
 		const float r = 140.0f + 70.0f * static_cast<float>(a_strength);
@@ -50,13 +58,23 @@ namespace Bombs
 	}
 	constexpr float OilSlickRadius(int a_strength) { return 120.0f + 60.0f * static_cast<float>(a_strength); }
 	inline constexpr float kTripwireRadius = 120.0f;  // proximity trigger (ESP)
+	constexpr int FragDamage(int s) { return 25 * (s + 1); }
+	constexpr int FireDamage(int s) { return 20 * (s + 1); }
+	constexpr int FrostDamage(int s) { return 20 * (s + 1); }
+	constexpr int FrostSlowPercent(int s) { return 30 + 10 * s; }
+	constexpr int FrostSlowSeconds(int s) { return 3 + 2 * s; }
+	constexpr int OilSlowPercent(int s) { return 20 + 15 * s; }
+	inline constexpr int kOilSlickSeconds = 60;
+	constexpr int MindLevel(int s) { return 10 * (s + 1); }       // fear / frenzy: highest level affected
+	constexpr int MindSeconds(int s) { return 4 + 6 * (s + 1); }  // fear / frenzy duration
 
 	// Fuse bombs are real physics objects (they bounce and roll); the fuse is lit when thrown.
 	constexpr float FuseSeconds(int a_trigger) { return a_trigger == kShortFuse ? 2.0f : a_trigger == kLongFuse ? 4.5f : 0.0f; }
 	constexpr bool  IsFuse(int a_trigger) { return a_trigger == kShortFuse || a_trigger == kLongFuse; }
+	constexpr bool  IsPlaced(int a_trigger) { return a_trigger == kTripwire || a_trigger == kVolatile; }
 
-	// Payloads in the game. Smoke is out until there's a real smoke effect to show (see README, To do);
-	// its form IDs stay reserved so nothing else moves.
+	// Payloads in the game. Smoke is out until a real smoke effect is picked (the debug smoke bombs
+	// are for that); its form IDs stay reserved so nothing else moves.
 	constexpr bool Available(int a_payload) { return a_payload != kSmoke; }
 
 	inline std::string Name(int a_index)
@@ -65,24 +83,48 @@ namespace Bombs
 		       " Bomb (" + std::string(kTriggerNames[TriggerOf(a_index)]) + ")";
 	}
 
-	// The item description (also written into the plugin by tools/MakePlugin).
+	// "2 m", "3.5 m"
+	inline std::string Meters(float a_units)
+	{
+		char        buf[16];
+		const float m = a_units / 70.0f;
+		if (m == static_cast<float>(static_cast<int>(m))) {
+			std::snprintf(buf, sizeof(buf), "%d m", static_cast<int>(m));
+		} else {
+			std::snprintf(buf, sizeof(buf), "%.1f m", m);
+		}
+		return buf;
+	}
+
+	// The item description (tools/MakePlugin writes the same text into the plugin).
 	inline std::string Describe(int a_trigger, int a_payload, int a_strength)
 	{
-		const auto lvl = std::to_string(10 * (a_strength + 1));
-		const char* how = a_trigger == kImpact    ? "Shatters on impact into" :
-		                  a_trigger == kShortFuse ? "Bounces and rolls; 2 seconds after the throw it bursts into" :
-		                  a_trigger == kLongFuse  ? "Bounces and rolls; 4.5 seconds after the throw it bursts into" :
-		                                            "Set it down; when someone comes close it bursts into";
+		const int   s = a_strength;
+		const auto  r = Meters(BlastRadius(a_payload, s));
+		const auto  n = [](int v) { return std::to_string(v); };
+		const char* how = a_trigger == kImpact    ? "Shatters on impact:" :
+		                  a_trigger == kShortFuse ? "Bounces and rolls, then 2 seconds after the throw:" :
+		                  a_trigger == kLongFuse  ? "Bounces and rolls, then 4.5 seconds after the throw:" :
+		                  a_trigger == kTripwire  ? "Set it down; when someone comes within 1.7 m:" :
+		                                            "Set it down; when it's struck by a weapon, arrow, spell or blast:";
 		std::string what;
 		switch (a_payload) {
-		case kFrag: what = "a burst of shrapnel"; break;
-		case kFire: what = "a burst of flame that leaves the ground burning"; break;
-		case kFrost: what = "a burst of cold that slows and saps stamina"; break;
-		case kOil: what = "a slick of oil that slows anyone in it and burns when a fire bomb lands in it"; break;
+		case kFrag: what = n(FragDamage(s)) + " damage within " + r + ", and a shove"; break;
+		case kFire: what = n(FireDamage(s)) + " fire damage within " + r + ", and the ground keeps burning"; break;
+		case kFrost:
+			what = n(FrostDamage(s)) + " frost damage within " + r + ", and slowed by " + n(FrostSlowPercent(s)) + "% for " +
+			       n(FrostSlowSeconds(s)) + " seconds";
+			break;
+		case kOil:
+			what = "an oil slick (" + Meters(OilSlickRadius(s)) + " radius, " + n(kOilSlickSeconds) + " seconds) that slows by " +
+			       n(OilSlowPercent(s)) + "%; a fire bomb sets it ablaze";
+			break;
 		case kSmoke: what = "a lingering cloud that hides anyone inside until they strike, but chokes their stamina"; break;
-		case kFear: what = "a blinding flash that sends anyone up to level " + lvl + " fleeing"; break;
-		case kFrenzy: what = "a cloud that drives anyone up to level " + lvl + " into a frenzy"; break;
-		default: what = "a deafening blast that staggers everyone around it"; break;
+		case kFear: what = "a blinding flash; anyone up to level " + n(MindLevel(s)) + " within " + r + " flees for " + n(MindSeconds(s)) + " seconds"; break;
+		case kFrenzy:
+			what = "anyone up to level " + n(MindLevel(s)) + " within " + r + " attacks whoever is nearest for " + n(MindSeconds(s)) + " seconds";
+			break;
+		default: what = "a deafening blast that staggers everyone within " + r; break;
 		}
 		return std::string(how) + " " + what + ".";
 	}

@@ -305,9 +305,9 @@ namespace CraftUI
 		// --- column 1: kind, strength ---
 		const float c1x = 86.0f, c1w = 270.0f, top = 182.0f, bottom = 930.0f;
 		Heading(dl, { X(c1x + 10.0f), Y(top) }, c1w * U - 20.0f * U, "Kind");
-		BeginColumn("##kind", { X(c1x), Y(top + 34.0f) }, { c1w * U, Y(4 * 35.0f + 10.0f) });
+		BeginColumn("##kind", { X(c1x), Y(top + 34.0f) }, { c1w * U, Y(Bombs::kT * 35.0f + 10.0f) });
 		{
-			static constexpr const char* kKind[Bombs::kT] = { "thrown", "thrown", "thrown", "placed" };
+			static constexpr const char* kKind[Bombs::kT] = { "thrown", "thrown", "thrown", "placed", "placed" };
 			for (int t = 0; t < Bombs::kT; ++t) {
 				if (Row(("t" + std::to_string(t)).c_str(), std::string(Bombs::kTriggerNames[t]), kKind[t], st.trigger == t, true, c1w * U)) {
 					st.trigger = t;
@@ -315,7 +315,7 @@ namespace CraftUI
 			}
 		}
 		ImGui::EndChild();
-		const float sTop = top + 34.0f + 4 * 35.0f + 34.0f;
+		const float sTop = top + 34.0f + Bombs::kT * 35.0f + 34.0f;
 		Heading(dl, { X(c1x + 10.0f), Y(sTop) }, c1w * U - 20.0f * U, "Strength");
 		BeginColumn("##strength", { X(c1x), Y(sTop + 34.0f) }, { c1w * U, Y(3 * 35.0f + 10.0f) });
 		{

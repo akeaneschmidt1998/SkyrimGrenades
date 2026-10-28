@@ -12,5 +12,7 @@ namespace Thrower
 {
 	void InstallHooks();   // at plugin load: per-frame update on the player
 	void RegisterInput();  // at kInputLoaded
+	void RegisterEvents(); // at kDataLoaded: hit events (volatile bombs)
 	void Reset();          // new game / load: drop any wind-up in progress
+	void GiveDebugBombs(); // after a load / new game: top the debug smoke bombs up to 5 each (if on)
 }

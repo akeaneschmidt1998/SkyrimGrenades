@@ -15,6 +15,7 @@ namespace Forms
 		int                payload = 0;
 		int                strength = 0;
 		std::string        name;  // the item's in-game name
+		bool               debug = false;  // a debug smoke bomb (after the real ones)
 
 		RE::ScrollItem*    item = nullptr;
 		RE::BGSProjectile* projectile = nullptr;
@@ -23,8 +24,12 @@ namespace Forms
 		[[nodiscard]] bool Ready() const { return item && projectile && explosion; }
 	};
 
-	// All 84 bombs, Bombs::Index order.
+	// Every bomb, Bombs::Index order, then the debug smoke bombs (index Bombs::kCount + k).
 	std::vector<PotType>& Types();
+	[[nodiscard]] int DebugIndex(int k);
+
+	// Sets each bomb's price from what its ingredients are worth (FirePots.ini fValueMult).
+	void SetPrices();
 
 	inline RE::BGSProjectile* oilFireProjectile = nullptr;
 

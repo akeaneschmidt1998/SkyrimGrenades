@@ -153,6 +153,12 @@ namespace
 		}
 		a_player->AddObjectToContainer(type.item, nullptr, n, nullptr);
 		RE::PlaySound("UIAlchemyCreatePotion");
+		// Alchemy practice, like brewing: the bombs' worth (vanilla potions give their price)
+		const float xp = static_cast<float>(type.item->value) * static_cast<float>(n) * Config::alchemyXPMult;
+		if (xp > 0.0f) {
+			a_player->AddSkillExperience(RE::ActorValue::kAlchemy, xp);
+		}
+		logger::info("Alchemy practice: {:.0f} for {} x {}", xp, n, type.name);
 		Notify(n == 1 ? fmt::format("Made a {}", type.name) : fmt::format("Made {} x {}", n, type.name));
 	}
 
