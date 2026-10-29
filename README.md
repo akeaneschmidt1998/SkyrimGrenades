@@ -23,7 +23,7 @@ off, so they chain. Pick one up to disarm it (not a lit fuse bomb).
 | Payload | What it does | Filling (any one, per mild bomb) |
 |---|---|---|
 | Frag | shrapnel: physical damage and a shove | Nails, Quarried Stone (Hearthfire) or a Soul Gem Fragment |
-| Fire | fire damage and burning ground across the whole blast (a ring of 5/6/7 patches round the centre) | Fire Salts; or 2 Charred Skeever Hide / Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
+| Fire | fire damage and burning ground across the whole blast (a ring of 5/6/7 patches round the centre) | Fire Salts; or 2 Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
 | Frost | frost damage that saps stamina, and slows | Frost Salts, Ice Wraith Teeth; or 2 Frost Mirriam |
 | Oil | a slick (60 s) that slows anyone in it; a fire bomb bursting in it sets it ablaze | Dwarven Oil, Troll Fat; or 2 Ash Hopper Jelly |
 | Smoke | a lingering cloud with a low mist under it: anyone inside is hidden (until they attack), loses stamina and gets no stamina regen | Charcoal; or 2 Tundra Cotton |
@@ -36,6 +36,13 @@ off, so they chain. Pick one up to disarm it (not a lit fuse bomb).
 | Mild | as listed | 2 m blast (concussion 3.5 m) |
 | Moderate | 2× everything (not the container) | 3 m blast (5.3 m), double damage, longer effects |
 | Major | 3× | 4 m blast (7 m), triple damage, longest effects |
+
+Every burst shows: frag a dust cloud, fire a pillar of flame, oil a splash and a pool, frost a
+swirl, fear and frenzy a light / dark cloud, concussion a shockwave, smoke its cloud. Only
+**concussion** makes noise that carries; everything else is silent beyond its blast.
+
+A bomb **weighs 0.5**; the containers and non-alchemy things they're made of weigh 0.1 (paper
+nothing); alchemy ingredients are unchanged (`[Weights]`).
 
 **Prices** come from the ingredients: what the cheapest way to make it is worth, × 1.25
 (`fValueMult`). **Making bombs trains Alchemy** like brewing does: each bomb gives its price as
@@ -56,9 +63,10 @@ chests, barrels and enemies draw potions from). All in `[Loot]`.
   and an item card on the right with the bomb, what one takes (needed / carried, red when short),
   how many you can make, an amount and **Craft**. The font is Barlow Condensed (SIL Open Font
   License, `SKSE/Plugins/FirePots/`); point `sMenuFont` at another .ttf to change it.
-  The game pauses while it's up. Mouse, arrows/WASD or d-pad to choose; Enter/E/A to select;
+  The game pauses while it's up. Not in combat (`bCraftInCombat`). Mouse, arrows/WASD or d-pad to choose; Enter/E/A to select;
   Esc/Tab/B or H to close. It always opens, so it's also the recipe book.
-- **Bombs are scrolls**: Scrolls tab; buy, sell, stash, favorite and **equip to a hand**. With a
+- **Bombs are scrolls**: Scrolls tab; buy, sell, stash, favorite and **equip to a hand**, where
+  you see it held (like the Dragonborn spider scrolls). With a
   bomb in a hand, **hold that hand's attack button** to wind up (the hand comes up like readying a
   spell) and **release** to throw (the spell-release motion). A tripwire is set down instead.
 - **G**: hold to wind up, release to throw, without equipping anything (no hand animation).
@@ -152,6 +160,11 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 
 - **Borrowed looks** (`[Visuals]`): picked by name from vanilla forms, not seen in game yet; swap
   any line for an alternative listed next to it.
+- **Who notices.** Explosions are silent now (concussion aside), but anyone a bomb actually hurts,
+  scares or frenzies turns hostile and calls in their friends, like any attack; and a fuse bomb
+  bouncing along makes ordinary clatter.
+- **The bomb in your hand** is the pot model hung on the hand's magic node and shrunk
+  (`fHandScale`); how it sits in the palm is untested.
 - **Fuse bombs' preview** shows the first bounce, not where they roll to.
 - **Fuse bombs at 70% size**: the model shrinks, but the engine may keep the collision full size,
   so a resting jug can float a hair above the ground. `fProjectileScale = 1` if it bothers you.

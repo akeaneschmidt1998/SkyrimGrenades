@@ -2,6 +2,8 @@
 
 #include "Config.h"
 
+#include <set>
+
 namespace
 {
 	// "Skyrim.esm|0B9BD2" -> that form. Anything without a '|' is not a form reference.
@@ -114,6 +116,49 @@ namespace Forms
 		}
 	}
 
+	void SetWeights()
+	{
+		auto weigh = [](RE::TESForm* a_form, float a_weight) {
+			auto* w = a_form ? skyrim_cast<RE::TESWeightForm*>(a_form) : nullptr;
+			if (w && a_weight >= 0.0f) {
+				w->weight = a_weight;
+			}
+		};
+		std::set<RE::TESForm*> paper;
+		for (const auto& ref : Config::weightless) {
+			if (auto* f = ParseFormRef(ref)) {
+				paper.insert(f);
+			}
+		}
+		std::set<RE::TESForm*> done;
+		auto misc = [&](const std::string& a_ref) {
+			auto* f = ParseFormRef(a_ref);
+			if (!f || f->GetFormType() == RE::FormType::Ingredient || !done.insert(f).second) {
+				return;  // alchemy ingredients keep their weight
+			}
+			weigh(f, paper.contains(f) ? 0.0f : Config::miscIngredientWeight);
+		};
+		for (const auto& c : Config::containers) {
+			misc(c);
+		}
+		for (const auto& list : { &Config::triggerIngredients, &Config::fillings }) {
+			for (const auto& line : *list) {
+				for (const auto& f : line.forms) {
+					misc(f);
+				}
+			}
+		}
+		int bombs = 0;
+		for (auto& t : Types()) {
+			if (t.item && !t.debug) {
+				weigh(t.item, Config::bombWeight);
+				++bombs;
+			}
+		}
+		logger::info("Weights: {} ingredients/containers -> {} (paper 0), {} bombs -> {}", done.size(), Config::miscIngredientWeight, bombs,
+			Config::bombWeight);
+	}
+
 	void SetPrices()
 	{
 		int container = -1;
@@ -224,6 +269,21 @@ namespace Forms
 			fireSpreadProjectile[s] = dh->LookupForm<RE::BGSProjectile>(Bombs::FireSpreadProjectileId(s), kPlugin);
 		}
 		hazardLook(Bombs::kFrostBurstId, Config::frostBurstModel, "Frost burst");
+		for (int p = 0; p < Bombs::kPayloads; ++p) {
+			if (Config::burstLookModel[p].empty()) {
+				continue;
+			}
+			hazardLook(Bombs::BurstLookHazardId(p), Config::burstLookModel[p], "Burst look");
+			burstLookProjectile[p] = dh->LookupForm<RE::BGSProjectile>(Bombs::BurstLookProjectileId(p), kPlugin);
+		}
+		// the bomb in your hand: the trigger's pot, as casting art (shrunk to fit by Thrower)
+		for (int t = 0; t < Bombs::kTriggers; ++t) {
+			if (auto* art = dh->LookupForm<RE::BGSArtObject>(Bombs::HandArtId(t), kPlugin)) {
+				if (const auto mesh = ResolveModel(Config::triggerModel[t]); !mesh.empty()) {
+					art->SetModel(mesh.c_str());
+				}
+			}
+		}
 		hazardLook(Bombs::kFearBurstId, Config::fearBurstModel, "Fear flash");
 		hazardLook(Bombs::kFrenzyBurstId, Config::frenzyBurstModel, "Frenzy burst");
 

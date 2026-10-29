@@ -63,6 +63,8 @@ namespace
 		return i;
 	}
 
+	bool weightlessCleared = false;  // the first sWeightless line replaces the built-in list
+
 	// "fire impact mild" (any order; prefixes ok) -> bomb index
 	int ParseBomb(const std::string& a_spec)
 	{
@@ -117,6 +119,10 @@ namespace
 				}
 				return;
 			}
+			if (key == "s" + Lower(std::string(Bombs::kPayloadNames[p])) + "burstlookmodel") {
+				burstLookModel[p] = Unquote(val);
+				return;
+			}
 			if (key == "s" + Lower(std::string(Bombs::kPayloadNames[p])) + "explosionmodel") {
 				explosionModel[p] = Unquote(val);
 				return;
@@ -163,6 +169,16 @@ namespace
 		else if (key == "sfrostburstmodel")   frostBurstModel = Unquote(val);
 		else if (key == "sfearburstmodel")    fearBurstModel = Unquote(val);
 		else if (key == "sfrenzyburstmodel")  frenzyBurstModel = Unquote(val);
+		else if (key == "fhandscale")         handScale = std::clamp(std::stof(val), 0.05f, 3.0f);
+		else if (key == "fmiscingredientweight") miscIngredientWeight = std::clamp(std::stof(val), -1.0f, 100.0f);
+		else if (key == "fbombweight")        bombWeight = std::clamp(std::stof(val), -1.0f, 100.0f);
+		else if (key == "sweightless") {
+			if (!weightlessCleared) {
+				weightless.clear();
+				weightlessCleared = true;
+			}
+			weightless.push_back(Unquote(val));
+		}
 		else if (key == "smenufont")          menuFont = Unquote(val);
 		else if (key == "fvaluemult")         valueMult = std::clamp(std::stof(val), 0.0f, 100.0f);
 		else if (key == "falchemyxpmult")     alchemyXPMult = std::clamp(std::stof(val), 0.0f, 100.0f);
@@ -280,7 +296,6 @@ namespace
 			{ { "Skyrim.esm|067184" }, 1, P::kFrag },
 			{ { "Skyrim.esm|067185" }, 1, P::kFrag },
 			{ { "Skyrim.esm|03AD5E" }, 1, P::kFire },             // Fire Salts
-			{ { "Skyrim.esm|052695" }, 2, P::kFire },             // Charred Skeever Hide
 			{ { "Dragonborn.esm|01CD74" }, 2, P::kFire },         // Ash Creep Cluster
 			{ { "Dragonborn.esm|01CD6E" }, 2, P::kFire },         // Burnt Spriggan Wood
 			{ { "Dragonborn.esm|016E26" }, 2, P::kFire },         // Spawn Ash
@@ -374,6 +389,8 @@ namespace Config
 		bottles.clear();
 		loot.clear();
 		debugSmokes.clear();
+		weightlessCleared = false;
+		weightless = { "Skyrim.esm|033761" };
 		if (!ReadIni(kMainIni)) {
 			logger::warn("{} not found, using defaults", kMainIni.string());
 		}

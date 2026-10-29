@@ -298,6 +298,7 @@ namespace
 	std::vector<Slick> g_slicks;
 
 	void ChainFrom(const Vec3& a_at, float a_radius);  // volatile bombs nearby go off too (below)
+	void BurstLook(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_payload);  // below
 
 	void Track(const RE::ProjectileHandle& a_handle, const Forms::PotType& a_type)
 	{
@@ -381,6 +382,7 @@ namespace
 			}
 			// gone: it burst at its last position
 			ChainFrom(it->last, Bombs::BlastRadius(it->payload, it->strength));
+			BurstLook(a_player, it->last, it->payload);
 			if (it->payload == Bombs::kFire && !it->debug) {
 				FireSpread(a_player, it->last, it->strength);
 			}
@@ -406,32 +408,83 @@ namespace
 
 	// --- Size: bombs fly and sit at Config::projectileScale of the container's size ------------
 	// LaunchData's scale isn't used by the engine, so the projectile's node is scaled every frame.
-	std::vector<RE::ProjectileHandle> g_scaled;
-
-	void Shrink(RE::TESObjectREFR* a_ref)
+	// Hidden projectiles (the one that sets off a fuse / set-down bomb) are kept at a speck and culled.
+	struct Scaled
 	{
-		const float s = Config::projectileScale;
-		if (auto* node = a_ref ? a_ref->Get3D() : nullptr; node && std::fabs(node->local.scale - s) > 0.001f) {
-			node->local.scale = s;
-			RE::NiUpdateData ud;
-			node->Update(ud);
+		RE::ProjectileHandle handle;
+		bool                 hidden = false;
+	};
+	std::vector<Scaled> g_scaled;
+
+	void Shrink(RE::TESObjectREFR* a_ref, bool a_hidden = false)
+	{
+		const float s = a_hidden ? 0.01f : Config::projectileScale;
+		if (auto* node = a_ref ? a_ref->Get3D() : nullptr) {
+			if (a_hidden) {
+				node->SetAppCulled(true);
+			}
+			if (std::fabs(node->local.scale - s) > 0.0001f) {
+				node->local.scale = s;
+				RE::NiUpdateData ud;
+				node->Update(ud);
+			}
 		}
 	}
 
 	void UpdateScaled()
 	{
-		if (std::fabs(Config::projectileScale - 1.0f) < 0.001f) {
-			g_scaled.clear();
-			return;
-		}
-		std::erase_if(g_scaled, [](const RE::ProjectileHandle& h) {
-			auto p = h.get();
+		const bool shrinkThrown = std::fabs(Config::projectileScale - 1.0f) > 0.001f;
+		std::erase_if(g_scaled, [&](const Scaled& a_s) {
+			auto p = a_s.handle.get();
 			if (!p || p->IsDeleted() || p->IsDisabled()) {
 				return true;
 			}
-			Shrink(p.get());
+			if (a_s.hidden || shrinkThrown) {
+				Shrink(p.get(), a_s.hidden);
+			}
 			return false;
 		});
+	}
+
+	// The bomb in your hand (casting art on the hand's magic node) is the full-size pot model:
+	// shrink whatever hangs off the magic node of a hand holding a bomb.
+
+	void UpdateHands(RE::PlayerCharacter* a_player)
+	{
+		static const RE::BSFixedString kNodes[2] = { "NPC R MagicNode [RMag]", "NPC L MagicNode [LMag]" };
+		for (int hand = 0; hand < 2; ++hand) {
+			if (HandPot(a_player, hand == 1) < 0) {
+				continue;
+			}
+			for (const bool firstPerson : { false, true }) {
+				auto* root = a_player->Get3D(firstPerson);
+				auto* magic = root ? root->GetObjectByName(kNodes[hand]) : nullptr;
+				auto* node = magic ? magic->AsNode() : nullptr;
+				if (!node) {
+					continue;
+				}
+				for (auto& child : node->GetChildren()) {
+					if (child && std::fabs(child->local.scale - Config::handScale) > 0.001f) {
+						child->local.scale = Config::handScale;
+					}
+				}
+			}
+		}
+	}
+
+	// Something to see where a bomb bursts (a short hazard with a borrowed look; none for some payloads).
+	void BurstLook(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_payload)
+	{
+		auto* base = Forms::burstLookProjectile[std::clamp(a_payload, 0, Bombs::kPayloads - 1)];
+		if (!base) {
+			return;
+		}
+		RE::Projectile::ProjectileRot rot{ 1.5707963f * g_pitchSign, 0.0f };
+		RE::Projectile::LaunchData    data(base, a_player, ToNi(a_at + Vec3{ 0.0f, 0.0f, 30.0f }), rot);
+		data.autoAim = false;
+		data.useOrigin = true;
+		RE::ProjectileHandle h;
+		RE::Projectile::Launch(&h, data);
 	}
 
 	// --- Fuse bombs: real physics objects ------------------------------------------------------
@@ -568,6 +621,11 @@ namespace
 		RE::ProjectileHandle h;
 		RE::Projectile::Launch(&h, data);
 		if (h) {
+			// it only carries the burst the last few inches: don't let a full-size pot flash up
+			if (auto p = h.get()) {
+				Shrink(p.get(), true);
+			}
+			g_scaled.push_back({ h, true });
 			Track(h, impact);
 		}
 		logger::info("{} went off at ({:.0f}, {:.0f}, {:.0f})", lit.name, a_at.x, a_at.y, a_at.z);
@@ -1018,7 +1076,7 @@ namespace
 				p->SetScale(Config::projectileScale);
 				Shrink(p.get());
 			}
-			g_scaled.push_back(handle);
+			g_scaled.push_back({ handle, false });
 		}
 
 		Track(handle, type);
@@ -1117,6 +1175,7 @@ namespace
 
 		TrackFlight(dt);
 		UpdateScaled();
+		UpdateHands(a_player);
 		UpdateLit(a_player, dt);
 		UpdateOil(a_player, dt);
 		UpdateWorld(a_player, dt);

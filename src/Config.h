@@ -18,7 +18,7 @@ namespace Config
 	inline std::uint32_t throwKey = 34;          // G: hold to wind up, release to throw (or place)
 	inline std::uint32_t cycleKey = 47;          // V: next bomb you carry
 	inline std::uint32_t craftKey = 35;          // H: open the bomb-making menu
-	inline bool          craftInCombat = true;   // allow making bombs while in combat
+	inline bool          craftInCombat = false;  // allow making bombs while in combat
 	inline std::uint32_t reloadConfigKey = 0;    // re-read the INI in game
 	inline float         minSpeed = 250.0f;      // units/s at the shortest throw (~3.5 m/s)
 	inline float         maxSpeed = 835.0f;      // units/s at full wind-up (~12 m/s, ~20 m on flat ground)
@@ -73,6 +73,25 @@ namespace Config
 	inline std::string frostBurstModel = "Skyrim.esm|0B79F9";      // FrostBlizzardSpellHazard01
 	inline std::string fearBurstModel = "Skyrim.esm|08CA32";       // FX_AzuraGoodMagicCloud
 	inline std::string frenzyBurstModel = "Skyrim.esm|08CA31";     // FX_AzuraEvilMagicCloud
+	// A short look dropped where any bomb bursts, per payload ("" = none: frost, fear and frenzy
+	// have theirs above, smoke's cloud is enough)
+	inline std::string burstLookModel[Bombs::kPayloads]{
+		"Skyrim.esm|0B8B0D",  // frag: a dust cloud (FXIrkngthandCollapseDustCloud)
+		"Skyrim.esm|108D70",  // fire: a pillar of flame (MGMagicFirePillarSmall)
+		"",                   // frost
+		"Skyrim.esm|018F7E",  // oil: a splash (FXFloorSplash_Large)
+		"",                   // smoke
+		"",                   // fear
+		"",                   // frenzy
+		"Skyrim.esm|10ACDA",  // concussion: a shockwave (MG07LabyrinthianShockwave)
+	};
+	// The bomb in your hand (casting art, like the spider scrolls), shrunk to fit
+	inline float handScale = 0.45f;
+
+	// --- Weights (set at load): what bombs are made of, and the bombs ---
+	inline float                    miscIngredientWeight = 0.1f;  // containers and non-alchemy ingredients
+	inline float                    bombWeight = 0.5f;
+	inline std::vector<std::string> weightless{ "Skyrim.esm|033761" };  // Paper Roll: 0
 
 	// --- Crafting ---
 	// Font of the bomb-making menu (a .ttf/.otf; relative to the Skyrim folder). Missing = built-in.

@@ -47,6 +47,9 @@ namespace Bombs
 	constexpr unsigned SmokeMistHazardId(int s) { return 0xD60u + static_cast<unsigned>(s); }
 	constexpr unsigned SmokeMistProjectileId(int s) { return 0xD66u + static_cast<unsigned>(s); }
 	inline constexpr unsigned kFrostBurstId = 0xD70, kFearBurstId = 0xD71, kFrenzyBurstId = 0xD72;
+	constexpr unsigned BurstLookHazardId(int p) { return 0xD80u + static_cast<unsigned>(p); }
+	constexpr unsigned BurstLookProjectileId(int p) { return 0xD90u + static_cast<unsigned>(p); }
+	constexpr unsigned HandArtId(int t) { return 0xDA0u + static_cast<unsigned>(t); }
 	constexpr unsigned FireSpreadProjectileId(int s) { return 0xD77u + static_cast<unsigned>(s); }
 	constexpr int      FireSpreadCount(int s) { return 5 + s; }  // burning patches in the ring around a fire burst
 

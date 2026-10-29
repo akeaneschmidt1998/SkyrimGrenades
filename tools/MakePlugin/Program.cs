@@ -30,6 +30,9 @@
 //   0xD60..0xD68   smoke's second layer (low mist): hazard, explosion, projectile per strength;
 //                  FirePots.dll drops it where a smoke bomb burst
 //   0xD70..0xD72   short "burst" hazards that give frost, fear and frenzy something to see
+//   0xD80..0xD97   burst looks: hazard, explosion, projectile per payload (FirePots.dll drops one
+//                  where a bomb bursts, so every burst shows)
+//   0xDA0..0xDA3   the bomb in your hand: casting art per trigger
 //   0xD74..0xD79   fire's spread: explosion + projectile per strength placing burning ground;
 //                  FirePots.dll drops a ring of them around a fire burst
 //   Visible looks are borrowed at load from vanilla forms by FirePots.dll ([Visuals]): hazards
@@ -294,7 +297,7 @@ var oilFire = new Explosion(Own(0xCF2), SkyrimRelease.SkyrimSE)
     ISRadius = 0f,
     VerticalOffsetMult = 0f,
     Flags = 0,
-    SoundLevel = SoundLevel.Normal,
+    SoundLevel = SoundLevel.Silent,  // only concussion is meant to be heard far off
 };
 oilFire.ObjectEffect.SetTo(oilFireEnch.FormKey);
 oilFire.Sound1.SetTo(TRPOilIgniteLowSD);
@@ -316,6 +319,53 @@ var oilFireProjectile = new Projectile(Own(0xCF4), SkyrimRelease.SkyrimSE)
 oilFireProjectile.Explosion.SetTo(oilFire.FormKey);
 oilFireProjectile.CollisionLayer.SetTo(L_PROJECTILE);
 mod.Projectiles.Add(oilFireProjectile);
+
+// --- The bomb in your hand: casting art per trigger (like the Dragonborn spider scrolls).
+// The model (the trigger's pot) is set by FirePots.dll at load, which also shrinks it to fit.
+var handArt = new ArtObject[Triggers];
+for (var t = 0; t < Triggers; t++)
+{
+    handArt[t] = new ArtObject(Own((uint)(0xDA0 + t)), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = $"FP_{TriggerTags[t]}HandArt",
+        Type = ArtObject.TypeEnum.MagicCasting,
+    };
+    mod.ArtObjects.Add(handArt[t]);
+}
+
+// --- Burst looks: a short-lived hazard per payload that FirePots.dll drops where a bomb bursts
+// (its model borrowed at load; payloads with no look set skip it).
+var burstProjectiles = new Projectile[Payloads];
+for (var p = 0; p < Payloads; p++)
+{
+    var bh = MakeHazard((uint)(0xD80 + p), $"FP_{PayloadNames[p]}BurstLook", PayloadNames[p], 150f, 1.5f, null);
+    var bx = new Explosion(Own((uint)(0xD88 + p)), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = $"FP_{PayloadNames[p]}BurstLookExplosion",
+        Name = PayloadNames[p],
+        Radius = 10f,
+        Flags = 0,
+        SoundLevel = SoundLevel.Silent,
+    };
+    bx.PlacedObject.SetTo(bh.FormKey);
+    mod.Explosions.Add(bx);
+    var bp = new Projectile(Own((uint)(0xD90 + p)), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = $"FP_{PayloadNames[p]}BurstLookProjectile",
+        Type = Projectile.TypeEnum.Missile,
+        Flags = Projectile.Flag.Explosion,
+        Gravity = 1f,
+        Speed = 300f,
+        Range = 1000f,
+        CollisionRadius = 4f,
+        Lifetime = 2f,
+        SoundLevel = (uint)SoundLevel.Silent,
+    };
+    bp.Explosion.SetTo(bx.FormKey);
+    bp.CollisionLayer.SetTo(L_PROJECTILE);
+    mod.Projectiles.Add(bp);
+    burstProjectiles[p] = bp;
+}
 
 // --- Payload explosions (per strength) ---------------------------------------------------------
 var explosions = new Explosion[Payloads, 3];
@@ -345,7 +395,6 @@ for (var p = 0; p < Payloads; p++)
             case 0:  // Frag: physical damage and a shove
                 e.Damage = 25f * mult;
                 e.Force = 40f * mult;
-                e.SoundLevel = SoundLevel.Normal;
                 e.Sound2.SetTo(FXExplosionCatapultNear);
                 e.ImpactDataSet.SetTo(ScorchImpact);
                 break;
@@ -493,6 +542,7 @@ for (var t = 0; t < Triggers; t++)
                 CastingSoundLevel = SoundLevel.Silent,
             };
             itemEffect.Projectile.SetTo(nullProjectile.FormKey);
+            itemEffect.CastingArt.SetTo(handArt[t].FormKey);
             mod.MagicEffects.Add(itemEffect);
 
             var bomb = new Scroll(Own(0x800 + i), SkyrimRelease.SkyrimSE)
@@ -501,7 +551,7 @@ for (var t = 0; t < Triggers; t++)
                 Name = name,
                 Description = desc,
                 Value = BaseValue[p] * (uint)(s + 1) + (t == 0 ? 0u : t >= 3 ? 6u : 3u),  // FirePots.dll replaces it with the ingredients' worth
-                Weight = 1.0f,
+                Weight = 0.5f,
                 Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>>
                 {
                     VendorItemScroll.ToLink<IKeywordGetter>(),
@@ -571,6 +621,7 @@ for (var k = 0; k < 10; k++)
         CastingSoundLevel = SoundLevel.Silent,
     };
     fx.Projectile.SetTo(nullProjectile.FormKey);
+    fx.CastingArt.SetTo(handArt[0].FormKey);
     mod.MagicEffects.Add(fx);
     var db = new Scroll(Own((uint)(0xD50 + k)), SkyrimRelease.SkyrimSE)
     {
@@ -637,6 +688,9 @@ Require(masters.SequenceEqual(new[] { skyrim }), $"only master is Skyrim.esm (go
 Require(!check.ConstructibleObjects.Any() && !check.MiscItems.Any(), "no recipes or misc items");
 var available = Enumerable.Range(0, Payloads).Count(Available);
 Require(check.Scrolls.Count() == Triggers * available * 3 + 10, $"{Triggers * available * 3} bombs + 10 debug (got {check.Scrolls.Count()})");
+Require(check.ArtObjects.Count() == Triggers && check.MagicEffects.Single(m => m.FormKey.ID == 0x980).CastingArt.FormKey.ID == 0xDA0, "hand art");
+Require(check.Scrolls.All(x => x.Weight <= 0.5f), "bombs weigh 0.5");
+Require(check.Explosions.Where(x => x.SoundLevel != SoundLevel.Silent).All(x => x.FormKey.ID == 0xC80 + 7 * 3 || x.FormKey.ID == 0xC80 + 7 * 3 + 1 || x.FormKey.ID == 0xC80 + 7 * 3 + 2), "only concussion makes noise");
 Require(check.Hazards.Count(h => h.FormKey.ID is >= 0xD60 and <= 0xD62) == 3 && check.Hazards.Any(h => h.FormKey.ID == 0xD70), "smoke mist + burst visuals");
 for (var k = 0; k < 10; k++)
 {

@@ -31,9 +31,14 @@ namespace Forms
 	// Sets each bomb's price from what its ingredients are worth (FirePots.ini fValueMult).
 	void SetPrices();
 
+	// Weights: containers and non-alchemy ingredients (FirePots.ini fMiscIngredientWeight, paper 0),
+	// and the bombs (fBombWeight).
+	void SetWeights();
+
 	inline RE::BGSProjectile* oilFireProjectile = nullptr;
 	inline RE::BGSProjectile* smokeMistProjectile[Bombs::kStrengths]{};  // smoke's low-mist layer, per strength
 	inline RE::BGSProjectile* fireSpreadProjectile[Bombs::kStrengths]{};  // burning ground around a fire burst
+	inline RE::BGSProjectile* burstLookProjectile[Bombs::kPayloads]{};    // a short look where a bomb bursts (null = none)
 
 	// "Skyrim.esm|0B9BD2" -> that form, or nullptr (logged).
 	RE::TESForm* Lookup(const std::string& a_ref);

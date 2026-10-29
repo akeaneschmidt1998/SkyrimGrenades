@@ -35,6 +35,7 @@ namespace
 		case SKSE::MessagingInterface::kDataLoaded:
 			Forms::Load();
 			Forms::SetPrices();
+			Forms::SetWeights();
 			Thrower::RegisterEvents();
 			BottleReturn::Init();
 			LeveledLists::Inject();
