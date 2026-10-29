@@ -34,6 +34,7 @@ namespace CraftModel
 	{
 		std::map<std::uint32_t, Item> items;      // every form a recipe mentions (by runtime form ID)
 		int                           containers = 0;  // empty containers carried
+		bool                          free = false;    // debug: making bombs costs nothing
 		std::vector<Line>             trigger[Bombs::kT];
 		std::vector<Alt>              fillings[Bombs::kP];  // any one per payload
 		int                           carried[Bombs::kCount]{};  // bombs you have
@@ -97,14 +98,15 @@ namespace CraftModel
 		}
 		const auto& fills = a_m.fillings[a_payload];
 		if (a_filling < 0 || a_filling >= static_cast<int>(fills.size())) {
-			return r;  // nothing to fill it with: can't make any
+			r.canMake = a_m.free ? 99 : 0;
+			return r;  // nothing to fill it with: can't make any (unless it's free)
 		}
 		add(fills[a_filling].id, fills[a_filling].count * mult, 0);
 		r.canMake = a_m.containers;
 		for (const auto& n : r.needs) {
 			r.canMake = (std::min)(r.canMake, n.need > 0 ? n.have / n.need : 0);
 		}
-		r.canMake = (std::max)(r.canMake, 0);
+		r.canMake = a_m.free ? 99 : (std::max)(r.canMake, 0);
 		return r;
 	}
 

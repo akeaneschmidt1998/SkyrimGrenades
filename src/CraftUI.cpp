@@ -297,6 +297,9 @@ namespace CraftUI
 			const std::string title = "BOMB-MAKING";
 			SpacedText(dl, { X(96.0f), Y(64.0f) }, title, 38.0f * U, 5.0f * U, kWhite);
 			Rule(dl, X(70.0f), X(800.0f), Y(116.0f), 0.6f);
+			if (m.free) {
+				SpacedText(dl, { X(98.0f), Y(126.0f) }, "DEBUG: BOMB-MAKING IS FREE", 15.0f * U, 2.0f * U, kLack);
+			}
 		}
 
 		// --- column 1: kind, strength ---

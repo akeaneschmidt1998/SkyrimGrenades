@@ -87,8 +87,8 @@ namespace Bombs
 	// Any bomb lying in the world (set down, dropped, a fuse bomb still rolling) goes off when struck
 	// or caught in another bomb's blast.
 
-	// Payloads in the game (smoke was out for a while; kept so it's easy to pull one again).
-	constexpr bool Available(int) { return true; }
+	// Payloads in the game. Smoke is out (it only made everyone in it invisible); its IDs stay reserved.
+	constexpr bool Available(int a_payload) { return a_payload != kSmoke; }
 
 	inline std::string Name(int a_index)
 	{

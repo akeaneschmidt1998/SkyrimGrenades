@@ -7,6 +7,7 @@
 #include "CraftShared.h"
 #include "Forms.h"
 
+#include <map>
 #include <xmmintrin.h>
 
 #undef GetObject  // <Windows.h> renames it to GetObjectA, which breaks BGSDefaultObjectManager::GetObject
@@ -446,16 +447,48 @@ namespace
 		});
 	}
 
-	// The bomb in your hand (casting art on the hand's magic node) is the full-size pot model:
-	// shrink whatever hangs off the magic node of a hand holding a bomb.
+	// --- The bomb in your hand: its pot model, hung on the hand's magic node while drawn ---------
+	// (Casting art never showed, so the mod attaches the mesh itself.) Collision is stripped from
+	// the copy so it can't drop out of the hand; fHandScale shrinks it, fHandOffset* nudge it.
+	std::map<std::string, RE::NiPointer<RE::NiNode>> g_heldModels;  // loaded once per mesh
+
+	RE::NiPointer<RE::NiAVObject> MakeHeld(const char* a_mesh, const std::string& a_name)
+	{
+		auto& cached = g_heldModels[a_mesh];
+		if (!cached) {
+			RE::BSModelDB::DBTraits::ArgsType args{};
+			if (RE::BSModelDB::Demand(a_mesh, cached, args) != RE::BSResource::ErrorCode::kNone || !cached) {
+				logger::warn("Bomb in hand: couldn't load '{}'", a_mesh);
+				return nullptr;
+			}
+		}
+		auto* copy = cached->Clone();
+		RE::NiPointer<RE::NiAVObject> obj{ copy ? netimmerse_cast<RE::NiAVObject*>(copy) : nullptr };
+		if (!obj) {
+			return nullptr;
+		}
+		RE::BSVisit::TraverseScenegraphObjects(obj.get(), [](RE::NiAVObject* a_o) {
+			if (a_o) {
+				a_o->collisionObject.reset();
+			}
+			return RE::BSVisit::BSVisitControl::kContinue;
+		});
+		obj->name = a_name;
+		obj->local.scale = Config::handScale;
+		obj->local.translate = { Config::handOffset[0], Config::handOffset[1], Config::handOffset[2] };
+		return obj;
+	}
 
 	void UpdateHands(RE::PlayerCharacter* a_player)
 	{
 		static const RE::BSFixedString kNodes[2] = { "NPC R MagicNode [RMag]", "NPC L MagicNode [LMag]" };
+		const auto* state = a_player->AsActorState();
+		const bool  drawn = state && state->IsWeaponDrawn();
 		for (int hand = 0; hand < 2; ++hand) {
-			if (HandPot(a_player, hand == 1) < 0) {
-				continue;
-			}
+			const int   type = drawn ? HandPot(a_player, hand == 1) : -1;
+			const auto* item = type >= 0 ? Forms::Types()[type].item : nullptr;
+			const char* mesh = item ? item->GetModel() : nullptr;
+			const std::string want = mesh && *mesh ? fmt::format("FirePotsHeld|{}", mesh) : std::string();
 			for (const bool firstPerson : { false, true }) {
 				auto* root = a_player->Get3D(firstPerson);
 				auto* magic = root ? root->GetObjectByName(kNodes[hand]) : nullptr;
@@ -463,9 +496,28 @@ namespace
 				if (!node) {
 					continue;
 				}
-				for (auto& child : node->GetChildren()) {
-					if (child && std::fabs(child->local.scale - Config::handScale) > 0.001f) {
-						child->local.scale = Config::handScale;
+				bool have = false;
+				for (std::uint32_t i = 0; i < node->GetChildren().size();) {
+					auto& child = node->GetChildren()[i];
+					const char* n = child ? child->name.c_str() : nullptr;
+					if (n && std::string_view(n).starts_with("FirePotsHeld|")) {
+						if (!have && want == n) {
+							have = true;
+							if (std::fabs(child->local.scale - Config::handScale) > 0.001f) {
+								child->local.scale = Config::handScale;
+							}
+						} else {
+							node->DetachChildAt(i);  // put away, swapped, or a stale copy
+							continue;
+						}
+					}
+					++i;
+				}
+				if (!have && !want.empty()) {
+					if (auto obj = MakeHeld(mesh, want)) {
+						node->AttachChild(obj.get(), true);
+						RE::NiUpdateData ud;
+						obj->Update(ud);
 					}
 				}
 			}

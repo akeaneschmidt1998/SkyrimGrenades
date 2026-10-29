@@ -170,6 +170,10 @@ namespace
 		else if (key == "sfearburstmodel")    fearBurstModel = Unquote(val);
 		else if (key == "sfrenzyburstmodel")  frenzyBurstModel = Unquote(val);
 		else if (key == "fhandscale")         handScale = std::clamp(std::stof(val), 0.05f, 3.0f);
+		else if (key == "fhandoffsetx")       handOffset[0] = std::clamp(std::stof(val), -100.0f, 100.0f);
+		else if (key == "fhandoffsety")       handOffset[1] = std::clamp(std::stof(val), -100.0f, 100.0f);
+		else if (key == "fhandoffsetz")       handOffset[2] = std::clamp(std::stof(val), -100.0f, 100.0f);
+		else if (key == "bfreecrafting")      freeCrafting = ParseBool(val);
 		else if (key == "fmiscingredientweight") miscIngredientWeight = std::clamp(std::stof(val), -1.0f, 100.0f);
 		else if (key == "fbombweight")        bombWeight = std::clamp(std::stof(val), -1.0f, 100.0f);
 		else if (key == "sweightless") {
@@ -305,8 +309,6 @@ namespace
 			{ { "Skyrim.esm|0F11C0" }, 1, P::kOil },              // Dwarven Oil
 			{ { "Skyrim.esm|03AD72" }, 1, P::kOil },              // Troll Fat
 			{ { "Dragonborn.esm|01CD71" }, 2, P::kOil },          // Ash Hopper Jelly
-			{ { "Skyrim.esm|033760" }, 1, P::kSmoke },            // Charcoal
-			{ { "Skyrim.esm|03F7F8" }, 2, P::kSmoke },            // Tundra Cotton
 			{ { "Skyrim.esm|03AD63" }, 1, P::kFear },             // Ectoplasm
 			{ { "Skyrim.esm|03AD73" }, 1, P::kFear },             // Glow Dust
 			{ { "Skyrim.esm|02F44C" }, 2, P::kFear },             // Nightshade
@@ -335,7 +337,6 @@ namespace
 				L("Skyrim.esm|09AF0A", B::kImpact, P::kFire, S::kMild, 1, 3),
 				L("Skyrim.esm|09AF0A", B::kShortFuse, P::kFrag, S::kMild, 1, 2),
 				L("Skyrim.esm|09AF0A", B::kImpact, P::kOil, S::kMild, 1, 2),
-				L("Skyrim.esm|09AF0A", B::kImpact, P::kSmoke, S::kMild, 5, 2),
 				L("Skyrim.esm|09AF0A", B::kTripwire, P::kFrag, S::kModerate, 10, 1),
 				// apothecaries
 				L("Skyrim.esm|09AF13", B::kImpact, P::kFire, S::kMild, 1, 2),
@@ -349,7 +350,6 @@ namespace
 				// bandit and Forsworn random loot
 				L("Skyrim.esm|10E0DD", B::kImpact, P::kFire, S::kMild, 1, 1),
 				L("Skyrim.esm|10E0DD", B::kShortFuse, P::kFrag, S::kMild, 5, 1),
-				L("Skyrim.esm|10E0DD", B::kImpact, P::kSmoke, S::kMild, 5, 1),
 				L("Skyrim.esm|10FAB6", B::kImpact, P::kFire, S::kMild, 1, 1),
 				L("Skyrim.esm|10FAB6", B::kTripwire, P::kFrag, S::kMild, 5, 1),
 				// random potion loot (LItemPotionAll: chests, barrels, enemies' potions)
@@ -357,7 +357,7 @@ namespace
 				L("Skyrim.esm|0E3E99", B::kImpact, P::kFrost, S::kMild, 1, 1),
 				L("Skyrim.esm|0E3E99", B::kShortFuse, P::kFrag, S::kMild, 1, 1),
 				L("Skyrim.esm|0E3E99", B::kImpact, P::kOil, S::kMild, 3, 1),
-				L("Skyrim.esm|0E3E99", B::kImpact, P::kSmoke, S::kMild, 5, 1),
+				L("Skyrim.esm|0E3E99", B::kImpact, P::kFrenzy, S::kMild, 5, 1),
 				L("Skyrim.esm|0E3E99", B::kImpact, P::kFear, S::kModerate, 12, 1),
 				L("Skyrim.esm|0E3E99", B::kImpact, P::kConcussion, S::kModerate, 15, 1),
 			};

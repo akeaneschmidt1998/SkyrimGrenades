@@ -6,7 +6,7 @@ strength; throw them with a wind-up, or set tripwires.
 ## Bombs
 
 A bomb is **trigger × payload × strength**, and every combination is its own item
-("Moderate Fire Bomb (Short Fuse)"): 4 triggers × 8 payloads × 3 strengths = 96 kinds. Every
+("Moderate Fire Bomb (Short Fuse)"): 4 triggers × 7 payloads × 3 strengths = 84 kinds. Every
 description gives the numbers (damage, radius, duration).
 
 | Trigger | What it does | Made with (per mild bomb) |
@@ -26,7 +26,6 @@ off, so they chain. Pick one up to disarm it (not a lit fuse bomb).
 | Fire | fire damage and burning ground across the whole blast (a ring of 5/6/7 patches round the centre) | Fire Salts; or 2 Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
 | Frost | frost damage that saps stamina, and slows | Frost Salts, Ice Wraith Teeth; or 2 Frost Mirriam |
 | Oil | a slick (60 s) that slows anyone in it; a fire bomb bursting in it sets it ablaze | Dwarven Oil, Troll Fat; or 2 Ash Hopper Jelly |
-| Smoke | a lingering cloud with a low mist under it: anyone inside is hidden (until they attack), loses stamina and gets no stamina regen | Charcoal; or 2 Tundra Cotton |
 | Fear | a blinding flash; everyone up to level 10/20/30 flees | Ectoplasm, Glow Dust; or 2 Nightshade / Deathbell |
 | Frenzy | everyone up to level 10/20/30 attacks whoever is nearest | Hagraven Feathers, Falmer Ear; or 2 Powdered Mammoth Tusk |
 | Concussion | wide stagger (1.75× the radius), very loud | Void Salts, Briar Heart; or 2 Bone Meal |
@@ -38,7 +37,7 @@ off, so they chain. Pick one up to disarm it (not a lit fuse bomb).
 | Major | 3× | 4 m blast (7 m), triple damage, longest effects |
 
 Every burst shows: frag a dust cloud, fire a pillar of flame, oil a splash and a pool, frost a
-swirl, fear and frenzy a light / dark cloud, concussion a shockwave, smoke its cloud. Only
+swirl, fear and frenzy a light / dark cloud, concussion a shockwave. Only
 **concussion** makes noise that carries; everything else is silent beyond its blast.
 
 A bomb **weighs 0.5**; the containers and non-alchemy things they're made of weigh 0.1 (paper
@@ -66,7 +65,7 @@ chests, barrels and enemies draw potions from). All in `[Loot]`.
   The game pauses while it's up. Not in combat (`bCraftInCombat`). Mouse, arrows/WASD or d-pad to choose; Enter/E/A to select;
   Esc/Tab/B or H to close. It always opens, so it's also the recipe book.
 - **Bombs are scrolls**: Scrolls tab; buy, sell, stash, favorite and **equip to a hand**, where
-  you see it held (like the Dragonborn spider scrolls). With a
+  you see it held while your hands are drawn (`fHandScale`, `fHandOffsetX/Y/Z`). With a
   bomb in a hand, **hold that hand's attack button** to wind up (the hand comes up like readying a
   spell) and **release** to throw (the spell-release motion). A tripwire is set down instead.
 - **G**: hold to wind up, release to throw, without equipping anything (no hand animation).
@@ -130,8 +129,8 @@ build\release\arc_preview.exe .
 
 Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 
-1. Log shows `FirePots loaded`, `96 of 96 bombs ready`, `Prices set for 96 bombs`, `Leveled
-   lists: 25 entries added`, `Smoke cloud model ...`, `Frost burst model ...`, `Watching hits`,
+1. Log shows `FirePots loaded`, `84 of 84 bombs ready`, `Prices set for 84 bombs`, `Leveled
+   lists: 23 entries added`, `Frost burst model ...`, `Watching hits`,
    `menu font: Data/SKSE/Plugins/FirePots/MenuFont.ttf`, `Watching for MCM changes`. The MCM lists *Fire Pots* with three pages.
 2. Press H: the game pauses and the bomb-making table opens with a cursor. With nothing in your
    pack every count is 0 and *Craft* is greyed; the right side still lists what each bomb takes.
@@ -150,7 +149,7 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
    hitting one sets off the other a beat later. Picking one up gives it back.
 9. A tripwire: set it, wait 3 s, walk onto it: it goes off (so does an enemy walking onto it).
    Every payload but frag and concussion shows something (oil a pool, frost a swirl, fear a
-   bright cloud, frenzy a dark one, smoke a cloud over a low mist).
+   bright cloud, frenzy a dark one).
 10. Make a few bombs: the Alchemy bar moves (log: `Alchemy practice: ...`).
 11. Fear / frenzy on a group of bandits; concussion staggers everything in a wide ring and is loud.
 12. Equip a bomb to the left hand, hold right-click, release: the hand's release motion, the bomb
@@ -163,8 +162,9 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 - **Who notices.** Explosions are silent now (concussion aside), but anyone a bomb actually hurts,
   scares or frenzies turns hostile and calls in their friends, like any attack; and a fuse bomb
   bouncing along makes ordinary clatter.
-- **The bomb in your hand** is the pot model hung on the hand's magic node and shrunk
-  (`fHandScale`); how it sits in the palm is untested.
+- **The bomb in your hand** is the pot mesh attached to the hand's magic node and shrunk
+  (`fHandScale`); how it sits in the palm is untested (nudge it with `fHandOffsetX/Y/Z`).
+- **Free bomb-making is on** (`bFreeCrafting = 1`, `[Debug]`) for testing; turn it off to play.
 - **Fuse bombs' preview** shows the first bounce, not where they roll to.
 - **Fuse bombs at 70% size**: the model shrinks, but the engine may keep the collision full size,
   so a resting jug can float a hair above the ground. `fProjectileScale = 1` if it bothers you.
@@ -176,6 +176,8 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
   mod launches the real bomb when it sees the scroll used up.
 
 ## To do
+
+- Smoke bombs, done properly (the first try only made everyone in the cloud invisible).
 
 - A real overhand throw animation through Open Animation Replacer (needs your
   `Skyrim - Animations.bsa`).

@@ -262,8 +262,10 @@ namespace Forms
 			}
 		};
 		for (int s = 0; s < Bombs::kStrengths; ++s) {
-			hazardLook(Bombs::SmokeCloudId(s), Config::smokeCloudModel, "Smoke cloud");
-			hazardLook(Bombs::SmokeMistHazardId(s), Config::smokeMistModel, "Smoke mist");
+			if (Bombs::Available(Bombs::kSmoke)) {
+				hazardLook(Bombs::SmokeCloudId(s), Config::smokeCloudModel, "Smoke cloud");
+				hazardLook(Bombs::SmokeMistHazardId(s), Config::smokeMistModel, "Smoke mist");
+			}
 			hazardLook(Bombs::OilSlickId(s), Config::oilSlickModel, "Oil slick");
 			smokeMistProjectile[s] = dh->LookupForm<RE::BGSProjectile>(Bombs::SmokeMistProjectileId(s), kPlugin);
 			fireSpreadProjectile[s] = dh->LookupForm<RE::BGSProjectile>(Bombs::FireSpreadProjectileId(s), kPlugin);
@@ -276,14 +278,7 @@ namespace Forms
 			hazardLook(Bombs::BurstLookHazardId(p), Config::burstLookModel[p], "Burst look");
 			burstLookProjectile[p] = dh->LookupForm<RE::BGSProjectile>(Bombs::BurstLookProjectileId(p), kPlugin);
 		}
-		// the bomb in your hand: the trigger's pot, as casting art (shrunk to fit by Thrower)
-		for (int t = 0; t < Bombs::kTriggers; ++t) {
-			if (auto* art = dh->LookupForm<RE::BGSArtObject>(Bombs::HandArtId(t), kPlugin)) {
-				if (const auto mesh = ResolveModel(Config::triggerModel[t]); !mesh.empty()) {
-					art->SetModel(mesh.c_str());
-				}
-			}
-		}
+
 		hazardLook(Bombs::kFearBurstId, Config::fearBurstModel, "Fear flash");
 		hazardLook(Bombs::kFrenzyBurstId, Config::frenzyBurstModel, "Frenzy burst");
 

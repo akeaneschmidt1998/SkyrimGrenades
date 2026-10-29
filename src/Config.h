@@ -87,6 +87,10 @@ namespace Config
 	};
 	// The bomb in your hand (casting art, like the spider scrolls), shrunk to fit
 	inline float handScale = 0.45f;
+	inline float handOffset[3]{ 0.0f, 0.0f, 0.0f };  // x y z on the hand's magic node (fHandOffsetX/Y/Z)
+
+	// --- Debug: make bombs for nothing (nothing used up, no Alchemy practice) ---
+	inline bool freeCrafting = true;
 
 	// --- Weights (set at load): what bombs are made of, and the bombs ---
 	inline float                    miscIngredientWeight = 0.1f;  // containers and non-alchemy ingredients

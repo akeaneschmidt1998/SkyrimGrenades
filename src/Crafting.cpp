@@ -69,6 +69,7 @@ namespace
 	CraftModel::Model BuildModel(RE::PlayerCharacter* a_player)
 	{
 		CraftModel::Model m;
+		m.free = Config::freeCrafting;
 		const auto        inv = Inventory(a_player);
 		auto note = [&](RE::TESBoundObject* a_obj) {
 			const auto id = a_obj->GetFormID();
@@ -138,7 +139,7 @@ namespace
 			return;
 		}
 		const auto inv = Inventory(a_player);
-		int        left = n;
+		int        left = Config::freeCrafting ? 0 : n;  // debug: free, nothing used up
 		for (auto* c : Containers()) {
 			const int take = (std::min)(left, Have(inv, c));
 			if (take > 0) {
@@ -147,6 +148,9 @@ namespace
 			}
 		}
 		for (const auto& need : res.needs) {
+			if (Config::freeCrafting) {
+				break;
+			}
 			if (auto* obj = RE::TESForm::LookupByID<RE::TESBoundObject>(need.id)) {
 				a_player->RemoveItem(obj, need.need * n, RE::ITEM_REMOVE_REASON::kRemove, nullptr, nullptr);
 			}
@@ -154,7 +158,7 @@ namespace
 		a_player->AddObjectToContainer(type.item, nullptr, n, nullptr);
 		RE::PlaySound("UIAlchemyCreatePotion");
 		// Alchemy practice, like brewing: the bombs' worth (vanilla potions give their price)
-		const float xp = static_cast<float>(type.item->value) * static_cast<float>(n) * Config::alchemyXPMult;
+		const float xp = Config::freeCrafting ? 0.0f : static_cast<float>(type.item->value) * static_cast<float>(n) * Config::alchemyXPMult;
 		if (xp > 0.0f) {
 			a_player->AddSkillExperience(RE::ActorValue::kAlchemy, xp);
 		}
