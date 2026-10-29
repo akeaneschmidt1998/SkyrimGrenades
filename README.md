@@ -48,7 +48,9 @@ nothing); alchemy ingredients are unchanged (`[Weights]`).
 Alchemy practice (`fAlchemyXPMult`).
 
 Every bomb also takes **one empty container**: any empty wine bottle, clay or Nordic jug, glazed or
-Nordic pot. It's picked for you. **Drinking wine gives its empty bottle back.**
+Nordic pot. It's picked for you. **Drinking wine or brandy gives its empty bottle back** (every
+wine, Alto and spiced included, Cyrodilic/Colovian brandy, and any mod's wine or brandy, matched
+by name or bottle).
 
 **Getting bombs:** make them anywhere with **H**, or buy them: general goods merchants (fire, frag,
 oil, tripwires), apothecaries (fire, frost, fear, frenzy), court wizards (concussion, fear,
@@ -175,8 +177,8 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
   nearby always set them off (the mod checks that itself).
 - **Oil and other fire**: fire bombs, fire spells (bolts, Flames, runes, fire explosions), fire
   arrows and burning hazards set it off; torches and fire-enchanted swords don't yet.
-- **Fear and frenzy** now reach level 20/35/50 and can wear off properly; if they still do
-  nothing, the fault is in how explosions apply them, and they'll need another route.
+- **Fear and frenzy** are now real spells cast on everyone in the blast (the explosion only
+  "hit" them before, which read as damage), up to level 20/35/50.
 - **Hand throws ride on a scroll cast** (0.3 s charge, an invisible do-nothing projectile); the
   mod launches the real bomb when it sees the scroll used up.
 

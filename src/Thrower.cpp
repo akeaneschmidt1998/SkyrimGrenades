@@ -481,6 +481,29 @@ namespace
 		}
 	}
 
+	// Fear / frenzy: the spell is cast on everyone (alive, not you) within the blast.
+	void CastMind(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_payload, int a_strength)
+	{
+		const int s = std::clamp(a_strength, 0, Bombs::kStrengths - 1);
+		auto*     spell = a_payload == Bombs::kFear ? Forms::fearSpell[s] : Forms::frenzySpell[s];
+		auto*     caster = a_player->GetMagicCaster(RE::MagicSystem::CastingSource::kInstant);
+		auto*     lists = RE::ProcessLists::GetSingleton();
+		if (!spell || !caster || !lists) {
+			return;
+		}
+		const float r = Bombs::BlastRadius(a_payload, s) + 30.0f;
+		int         hit = 0;
+		lists->ForEachHighActor([&](RE::Actor* a_actor) {
+			if (a_actor && a_actor != a_player && !a_actor->IsDead() && !a_actor->IsDisabled() &&
+				(ToVec(a_actor->GetPosition()) - a_at).Length() <= r) {
+				caster->CastSpellImmediate(spell, false, a_actor, 1.0f, false, 0.0f, a_player);
+				++hit;
+			}
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+		logger::info("{} burst: cast on {} nearby", a_payload == Bombs::kFear ? "Fear" : "Frenzy", hit);
+	}
+
 	void UpdateOil(RE::PlayerCharacter* a_player, float a_dt)
 	{
 		for (auto& s : g_slicks) {
@@ -498,6 +521,9 @@ namespace
 			// gone: it burst at its last position
 			ChainFrom(it->last, Bombs::BlastRadius(it->payload, it->strength));
 			BurstLook(a_player, it->last, it->payload);
+			if ((it->payload == Bombs::kFear || it->payload == Bombs::kFrenzy) && !it->debug) {
+				CastMind(a_player, it->last, it->payload, it->strength);
+			}
 			if (it->payload == Bombs::kFire && !it->debug) {
 				FireSpread(a_player, it->last, it->strength);
 			}
@@ -510,7 +536,7 @@ namespace
 			} else if (it->payload == Bombs::kFire) {
 				const float blast = Bombs::BlastRadius(Bombs::kFire, it->strength);
 				for (auto s = g_slicks.begin(); s != g_slicks.end();) {
-					if ((s->pos - it->last).Length() <= s->radius + blast) {
+					if ((s->pos - it->last).Length() <= s->radius + blast + 60.0f) {
 						Ignite(a_player, *s);
 						s = g_slicks.erase(s);
 					} else {
@@ -588,8 +614,14 @@ namespace
 			}
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
-		obj->name = a_name;
-		return obj;
+		// our own parent node carries the size, offset and turn (the mesh's root keeps its own)
+		RE::NiPointer<RE::NiNode> holder{ RE::NiNode::Create(1) };
+		if (!holder) {
+			return nullptr;
+		}
+		holder->name = a_name;
+		holder->AttachChild(obj.get(), true);
+		return RE::NiPointer<RE::NiAVObject>(holder.get());
 	}
 
 	// Scale, offset and turn from the settings (applied every frame, so MCM changes show at once).
@@ -598,7 +630,14 @@ namespace
 		constexpr float kDeg = 3.14159265f / 180.0f;
 		a_obj->local.scale = Config::handScale;
 		a_obj->local.translate = { Config::handOffset[0], Config::handOffset[1], Config::handOffset[2] };
-		a_obj->local.rotate.SetEulerAnglesXYZ(Config::handRotation[0] * kDeg, Config::handRotation[1] * kDeg, Config::handRotation[2] * kDeg);
+		// R = Rz * Ry * Rx, built by hand (no reliance on the engine's Euler helpers)
+		const float cx = std::cos(Config::handRotation[0] * kDeg), sx = std::sin(Config::handRotation[0] * kDeg);
+		const float cy = std::cos(Config::handRotation[1] * kDeg), sy = std::sin(Config::handRotation[1] * kDeg);
+		const float cz = std::cos(Config::handRotation[2] * kDeg), sz = std::sin(Config::handRotation[2] * kDeg);
+		auto& m = a_obj->local.rotate.entry;
+		m[0][0] = cz * cy;  m[0][1] = cz * sy * sx - sz * cx;  m[0][2] = cz * sy * cx + sz * sx;
+		m[1][0] = sz * cy;  m[1][1] = sz * sy * sx + cz * cx;  m[1][2] = sz * sy * cx - cz * sx;
+		m[2][0] = -sy;      m[2][1] = cy * sx;                 m[2][2] = cy * cx;
 	}
 
 	void UpdateHands(RE::PlayerCharacter* a_player)

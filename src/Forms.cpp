@@ -317,9 +317,10 @@ namespace Forms
 			logger::info("{}: '{}' (from {})", d.name, mesh, cand.form);
 		}
 
-		oilFireProjectile = dh->LookupForm<RE::BGSProjectile>(Bombs::kOilFireProjectileId, kPlugin);
-		if (oilFireProjectile && oilFireProjectile->data.explosionType) {
-			SetModelFrom(oilFireProjectile->data.explosionType, Config::oilFireModel, "Burning oil");
+		oilFireProjectile = dh->LookupForm<RE::BGSProjectile>(Bombs::kOilFireProjectileId, kPlugin);  // bursts into the vanilla oil-trap fire
+		for (int s = 0; s < Bombs::kStrengths; ++s) {
+			fearSpell[s] = dh->LookupForm<RE::SpellItem>(0xCF6 + s, kPlugin);
+			frenzySpell[s] = dh->LookupForm<RE::SpellItem>(0xCF9 + s, kPlugin);
 		}
 		logger::info("{} of {} bombs ready", ready, wanted);
 		return ready == wanted;

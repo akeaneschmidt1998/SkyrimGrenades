@@ -94,6 +94,39 @@ namespace
 				}
 			}
 		}
+		// Everything else that's a wine or a brandy (any mod's too): matched by name or by a model in
+		// the wine folder; the bottle that looks most like it, else a plain empty wine bottle.
+		if (auto* dh = RE::TESDataHandler::GetSingleton()) {
+			auto* plain = Forms::Lookup("Skyrim.esm|0F2012");     // WineBottle01AEmpty
+			auto* spiced = Forms::Lookup("Skyrim.esm|0FED17");    // WineSolitudeSpicedBottleEmpty
+			auto* b01b = Forms::Lookup("Skyrim.esm|0F2013");
+			auto* b02a = Forms::Lookup("Skyrim.esm|0F2014");
+			auto* b02b = Forms::Lookup("Skyrim.esm|0F2015");
+			for (auto* drink : dh->GetFormArray<RE::AlchemyItem>()) {
+				if (!drink || drink->IsPoison() || drink->IsMedicine() || g_table.contains(drink->GetFormID())) {
+					continue;
+				}
+				const auto name = Lower(drink->GetName() ? drink->GetName() : "");
+				const auto model = Lower(drink->GetModel() ? drink->GetModel() : "");
+				const bool wine = name.find("wine") != std::string::npos || name.find("brandy") != std::string::npos ||
+				                  model.find("\\wine\\") != std::string::npos || model.find("winebottle") != std::string::npos ||
+				                  model.find("brandy") != std::string::npos;
+				if (!wine) {
+					continue;
+				}
+				RE::TESForm* empty = plain;
+				if (name.find("spiced") != std::string::npos || model.find("spiced") != std::string::npos) {
+					empty = spiced;
+				} else if (model.find("winebottle01b") != std::string::npos) {
+					empty = b01b;
+				} else if (model.find("winebottle02a") != std::string::npos) {
+					empty = b02a;
+				} else if (model.find("winebottle02") != std::string::npos) {
+					empty = b02b;
+				}
+				Add(drink, empty ? empty->As<RE::TESBoundObject>() : nullptr, "a wine or brandy");
+			}
+		}
 		logger::info("Bottle return: {} drinks give an empty bottle back", g_table.size());
 	}
 

@@ -24,6 +24,7 @@
 //   0xCE0..0xCFF   smoke clouds, oil slicks, their spells and effects, fear/frenzy effects,
 //                  the oil-fire explosion (FirePots.dll sets it off when a fire bomb lands in oil)
 //   0xCF5          the invisible do-nothing projectile
+//   0xCF6..0xCFB   fear / frenzy spells per strength (FirePots.dll casts them on everyone in the blast)
 //   0xD00          the MCM quest (MCM Helper menu)
 //   0xD10..0xD5F   debug smoke bombs (hazard, explosion, projectile, effect, scroll per candidate
 //                  smoke look; FirePots.dll gives each its look from FirePots.ini [Debug])
@@ -60,6 +61,10 @@ var EitherHand = Sk(0x013F44);
 var VendorItemScroll = Sk(0x0A0E57);
 var VendorItemPotion = Sk(0x08CDEC);
 var TRPOilLampBreak = Sk(0x08BBC6);         // shatter
+var TrapOilExplosionInitial = Sk(0x109E74);  // the dungeon oil trap catching fire
+var MagicInfluence = Sk(0x078098);
+var MagicInfluenceFear = Sk(0x0424E0);
+var MagicInfluenceFrenzy = Sk(0x0C44B6);
 var TRPOilIgniteLowSD = Sk(0x042526);
 var FXExplosionIceSD = Sk(0x023992);
 var FXExplosionCatapultNear = Sk(0x0FD989);  // big boom
@@ -319,6 +324,20 @@ fear.MagicSkill = ActorValue.Illusion;
 var frenzy = Mgef(0xCF1, "FP_BombFrenzy", "Frenzied", "Attacks anyone nearby.",
     new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Frenzy), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
 frenzy.MagicSkill = ActorValue.Illusion;
+// Cast on everyone in the blast by FirePots.dll (an explosion's enchantment only "hit" them).
+foreach (var m in new[] { fear, frenzy })
+{
+    m.TargetType = TargetType.TargetActor;
+    m.Keywords = new ExtendedList<IFormLinkGetter<IKeywordGetter>> { MagicInfluence.ToLink<IKeywordGetter>(),
+        (m == fear ? MagicInfluenceFear : MagicInfluenceFrenzy).ToLink<IKeywordGetter>() };
+}
+for (var s = 0; s < 3; s++)
+{
+    var fs = ContactSpell((uint)(0xCF6 + s), $"FP_{StrengthNames[s]}FearSpell", "Terror", Eff(fear.FormKey, 20f + 15f * s, 4 + 6 * (s + 1)));
+    fs.TargetType = TargetType.TargetActor;
+    var zs = ContactSpell((uint)(0xCF9 + s), $"FP_{StrengthNames[s]}FrenzySpell", "Frenzy", Eff(frenzy.FormKey, 20f + 15f * s, 4 + 6 * (s + 1)));
+    zs.TargetType = TargetType.TargetActor;
+}
 
 // Oil fire: what FirePots.dll sets off when a fire bomb lands in an oil slick.
 var oilFireEnch = Ench(0xCF3, "FP_OilFireEnch", "Burning Oil", Eff(EnchFireDamageFFContact, 25f, 0));
@@ -351,7 +370,7 @@ var oilFireProjectile = new Projectile(Own(0xCF4), SkyrimRelease.SkyrimSE)
     Lifetime = 2f,
     SoundLevel = (uint)SoundLevel.Silent,
 };
-oilFireProjectile.Explosion.SetTo(oilFire.FormKey);
+oilFireProjectile.Explosion.SetTo(TrapOilExplosionInitial);  // the real thing, as in dungeons
 oilFireProjectile.CollisionLayer.SetTo(L_PROJECTILE);
 mod.Projectiles.Add(oilFireProjectile);
 
@@ -449,7 +468,7 @@ for (var p = 0; p < Payloads; p++)
                     smokeSpells[s].FormKey).FormKey);
                 break;
             case 5:  // Fear: flash + everyone up to the level flees
-                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Terror", Eff(fear.FormKey, 20f + 15f * s, 4 + 6 * mult)).FormKey;
+                // the fear itself is cast on everyone in the blast by FirePots.dll (spells 0xCF6+s)
                 e.ImageSpaceModifier.SetTo(FlashImod);
                 e.ISRadius = 300f + 200f * s;
                 e.Sound2.SetTo(ThunderA);
@@ -457,7 +476,7 @@ for (var p = 0; p < Payloads; p++)
                 e.PlacedObject.SetTo(fearBurst.FormKey);
                 break;
             case 6:  // Frenzy: everyone up to the level attacks whoever is nearest
-                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Frenzy", Eff(frenzy.FormKey, 20f + 15f * s, 4 + 6 * mult)).FormKey;
+                // the frenzy is cast on everyone in the blast by FirePots.dll (spells 0xCF9+s)
                 e.Sound2.SetTo(FXExplosionIceSD);
                 e.PlacedObject.SetTo(frenzyBurst.FormKey);
                 break;
