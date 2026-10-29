@@ -23,18 +23,18 @@ off, so they chain. Pick one up to disarm it (not a lit fuse bomb).
 | Payload | What it does | Filling (any one, per mild bomb) |
 |---|---|---|
 | Frag | shrapnel: physical damage and a shove | Nails, Quarried Stone (Hearthfire) or a Soul Gem Fragment |
-| Fire | fire damage and burning ground across the whole blast (a ring of 5/6/7 patches round the centre) | Fire Salts; or 2 Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
+| Fire | fire damage and burning ground: mild a patch, moderate 3 more round the edge, major 4 and a big blaze | Fire Salts; or 2 Ash Creep Cluster / Burnt Spriggan Wood / Spawn Ash |
 | Frost | frost damage that saps stamina, and slows | Frost Salts, Ice Wraith Teeth; or 2 Frost Mirriam |
-| Oil | a slick (60 s) that slows anyone in it; a fire bomb bursting in it sets it ablaze | Dwarven Oil, Troll Fat; or 2 Ash Hopper Jelly |
-| Fear | a blinding flash; everyone up to level 10/20/30 flees | Ectoplasm, Glow Dust; or 2 Nightshade / Deathbell |
-| Frenzy | everyone up to level 10/20/30 attacks whoever is nearest | Hagraven Feathers, Falmer Ear; or 2 Powdered Mammoth Tusk |
+| Oil | a slick (60 s, pools round its edge) that slows anyone in it; any fire sets it ablaze: a fire bomb, a fire spell or fire arrow, a burning hazard | Dwarven Oil, Troll Fat; or 2 Ash Hopper Jelly |
+| Fear | a blinding flash; everyone up to level 20/35/50 flees | Ectoplasm, Glow Dust; or 2 Nightshade / Deathbell |
+| Frenzy | everyone up to level 20/35/50 attacks whoever is nearest | Hagraven Feathers, Falmer Ear; or 2 Powdered Mammoth Tusk |
 | Concussion | wide stagger (1.75× the radius), very loud | Void Salts, Briar Heart; or 2 Bone Meal |
 
 | Strength | Ingredients | Effect |
 |---|---|---|
-| Mild | as listed | 2 m blast (concussion 3.5 m) |
-| Moderate | 2× everything (not the container) | 3 m blast (5.3 m), double damage, longer effects |
-| Major | 3× | 4 m blast (7 m), triple damage, longest effects |
+| Mild | as listed | 1 m blast (concussion 1.8 m) |
+| Moderate | 2× everything (not the container) | 1.5 m blast (2.6 m), double damage, longer effects |
+| Major | 3× | 2 m blast (3.5 m), triple damage, longest effects; major concussion ragdolls everyone in it |
 
 Every burst shows: frag a dust cloud, fire a pillar of flame, oil a splash and a pool, frost a
 swirl, fear and frenzy a light / dark cloud, concussion a shockwave. Only
@@ -65,11 +65,13 @@ chests, barrels and enemies draw potions from). All in `[Loot]`.
   The game pauses while it's up. Not in combat (`bCraftInCombat`). Mouse, arrows/WASD or d-pad to choose; Enter/E/A to select;
   Esc/Tab/B or H to close. It always opens, so it's also the recipe book.
 - **Bombs are scrolls**: Scrolls tab; buy, sell, stash, favorite and **equip to a hand**, where
-  you see it held while your hands are drawn (`fHandScale`, `fHandOffsetX/Y/Z`). With a
+  you see it held while your hands are drawn; size, position and angle are in the MCM
+  (*Display > Bomb in hand*). With a
   bomb in a hand, **hold that hand's attack button** to wind up (the hand comes up like readying a
   spell) and **release** to throw (the spell-release motion). A tripwire is set down instead.
 - **G**: hold to wind up, release to throw, without equipping anything (no hand animation).
-  **Tap G** to set the bomb down where you're looking instead (a fuse bomb's fuse is lit).
+  **Tap G** (or tap the attack button of a hand holding a bomb) to set it down where you're
+  looking instead (a fuse bomb's fuse is lit). How short a tap is: *Tap to set down* in the MCM.
 - **V**: next kind of bomb you carry (swaps the one in your hand, if any).
 - A full wind-up lands about 20 m away on flat ground. Bombs are 70% of the container's size
   (`fProjectileScale`).
@@ -171,7 +173,10 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 - **Bombs in the world and hits**: they rely on the engine sending a hit event for a struck item
   lying in the world. Arrows and spells should; melee swings at clutter might not. Bombs bursting
   nearby always set them off (the mod checks that itself).
-- **Oil only ignites from fire bombs**, not fire spells, torches or enchanted weapons yet.
+- **Oil and other fire**: fire bombs, fire spells (bolts, Flames, runes, fire explosions), fire
+  arrows and burning hazards set it off; torches and fire-enchanted swords don't yet.
+- **Fear and frenzy** now reach level 20/35/50 and can wear off properly; if they still do
+  nothing, the fault is in how explosions apply them, and they'll need another route.
 - **Hand throws ride on a scroll cast** (0.3 s charge, an invisible do-nothing projectile); the
   mod launches the real bomb when it sees the scroll used up.
 
@@ -182,4 +187,4 @@ Log: `Documents/My Games/Skyrim Special Edition/SKSE/FirePots.log`.
 - A real overhand throw animation through Open Animation Replacer (needs your
   `Skyrim - Animations.bsa`).
 - NPC bombers.
-- Fire spells and torches igniting oil.
+- Torches and fire-enchanted weapons igniting oil.

@@ -32,6 +32,7 @@
 //   0xD70..0xD72   short "burst" hazards that give frost, fear and frenzy something to see
 //   0xD80..0xD97   burst looks: hazard, explosion, projectile per payload (FirePots.dll drops one
 //                  where a bomb bursts, so every burst shows)
+//   0xDB0..0xDB5   visual droppers (hazard, explosion, projectile): big blaze, oil pools
 //   0xDA0..0xDA3   reserved (casting art for the bomb in hand didn't show; FirePots.dll attaches it)
 //   0xD74..0xD79   fire's spread: explosion + projectile per strength placing burning ground;
 //                  FirePots.dll drops a ring of them around a fire burst
@@ -85,7 +86,7 @@ bool Available(int p) => p != 4;  // smoke is out (it only made everyone in it i
 const int Payloads = 8;
 uint Slot(int t, int p, int s) => (uint)((t * 16 + p) * 3 + s);
 string[] StrengthNames = { "Mild", "Moderate", "Major" };
-float[] Radius = { 140f, 210f, 280f };
+float[] Radius = { 70f, 105f, 140f };  // halved: spare your allies
 uint[] BaseValue = { 12, 15, 15, 12, 12, 18, 22, 18 };  // per payload, mild impact; x strength
 
 var outDir = args.Length > 0 ? args[0] : ".";
@@ -243,6 +244,40 @@ var frostBurst = MakeHazard(0xD70, "FP_FrostBurstVisual", "Frost", 200f, 3f, nul
 var fearBurst = MakeHazard(0xD71, "FP_FearBurstVisual", "Flash", 200f, 2f, null);
 var frenzyBurst = MakeHazard(0xD72, "FP_FrenzyBurstVisual", "Frenzy", 200f, 3f, null);
 
+// Visual "droppers": FirePots.dll launches the projectile straight down onto a spot; its explosion
+// places the hazard (model borrowed at load). No damage, no spell.
+void Dropper(uint id, string tag, string name, float lifetime)
+{
+    var hz = MakeHazard(id, $"FP_{tag}", name, 100f, lifetime, null);
+    var ex = new Explosion(Own(id + 1), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = $"FP_{tag}Explosion",
+        Name = name,
+        Radius = 10f,
+        Flags = 0,
+        SoundLevel = SoundLevel.Silent,
+    };
+    ex.PlacedObject.SetTo(hz.FormKey);
+    mod.Explosions.Add(ex);
+    var pr = new Projectile(Own(id + 2), SkyrimRelease.SkyrimSE)
+    {
+        EditorID = $"FP_{tag}Projectile",
+        Type = Projectile.TypeEnum.Missile,
+        Flags = Projectile.Flag.Explosion,
+        Gravity = 1f,
+        Speed = 300f,
+        Range = 1000f,
+        CollisionRadius = 4f,
+        Lifetime = 3f,
+        SoundLevel = (uint)SoundLevel.Silent,
+    };
+    pr.Explosion.SetTo(ex.FormKey);
+    pr.CollisionLayer.SetTo(L_PROJECTILE);
+    mod.Projectiles.Add(pr);
+}
+Dropper(0xDB0, "FireBigLook", "Fire", 10f);   // major fire bombs and burning oil: one big blaze
+Dropper(0xDB3, "OilPoolLook", "Oil", 60f);    // oil: pools around the slick so it reads as wide as it is
+
 // Fire's spread: FirePots.dll drops these in a ring around a fire burst so the burning ground
 // covers the blast (vanilla burning-ground patches; no damage of their own beyond the fire).
 for (var s = 0; s < 3; s++)
@@ -279,10 +314,10 @@ var oilSlow = Mgef(0xCEF, "FP_OilSlow", "Oil Slick", "Slowed by the oil.",
     Quiet | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
 // Fear / Frenzy: magnitude = highest level affected.
 var fear = Mgef(0xCF0, "FP_BombFear", "Terrified", "Flees in terror.",
-    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Demoralize), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea);
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Demoralize), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
 fear.MagicSkill = ActorValue.Illusion;
 var frenzy = Mgef(0xCF1, "FP_BombFrenzy", "Frenzied", "Attacks anyone nearby.",
-    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Frenzy), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.NoArea);
+    new MagicEffectArchetype(MagicEffectArchetype.TypeEnum.Frenzy), MagicEffect.Flag.Hostile | MagicEffect.Flag.Detrimental | MagicEffect.Flag.Recover);
 frenzy.MagicSkill = ActorValue.Illusion;
 
 // Oil fire: what FirePots.dll sets off when a fire bomb lands in an oil slick.
@@ -404,7 +439,7 @@ for (var p = 0; p < Payloads; p++)
             case 3:  // Oil: a slick that slows (and burns when a fire bomb lands in it)
             {
                 var spell = ContactSpell((uint)(0xCEC + s), $"FP_{tag}SlickSpell", "Oil Slick", Eff(oilSlow.FormKey, 20f + 15f * s, 2));
-                var slick = MakeHazard((uint)(0xCE9 + s), $"FP_{tag}Slick", "Oil Slick", 120f + 60f * s, 60f, spell.FormKey);
+                var slick = MakeHazard((uint)(0xCE9 + s), $"FP_{tag}Slick", "Oil Slick", 60f + 30f * s, 60f, spell.FormKey);
                 e.ImpactDataSet.SetTo(ScorchImpact);  // dark stain
                 e.PlacedObject.SetTo(slick.FormKey);
                 break;
@@ -414,7 +449,7 @@ for (var p = 0; p < Payloads; p++)
                     smokeSpells[s].FormKey).FormKey);
                 break;
             case 5:  // Fear: flash + everyone up to the level flees
-                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Terror", Eff(fear.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
+                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Terror", Eff(fear.FormKey, 20f + 15f * s, 4 + 6 * mult)).FormKey;
                 e.ImageSpaceModifier.SetTo(FlashImod);
                 e.ISRadius = 300f + 200f * s;
                 e.Sound2.SetTo(ThunderA);
@@ -422,7 +457,7 @@ for (var p = 0; p < Payloads; p++)
                 e.PlacedObject.SetTo(fearBurst.FormKey);
                 break;
             case 6:  // Frenzy: everyone up to the level attacks whoever is nearest
-                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Frenzy", Eff(frenzy.FormKey, 10f * mult, 4 + 6 * mult)).FormKey;
+                ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Frenzy", Eff(frenzy.FormKey, 20f + 15f * s, 4 + 6 * mult)).FormKey;
                 e.Sound2.SetTo(FXExplosionIceSD);
                 e.PlacedObject.SetTo(frenzyBurst.FormKey);
                 break;
@@ -430,6 +465,7 @@ for (var p = 0; p < Payloads; p++)
                 ench = Ench((uint)(0xCB0 + p * 3 + s), $"FP_{tag}Ench", "Concussion", Eff(StaggerAttackFFContact, 0.5f + 0.25f * s, 0)).FormKey;
                 e.Radius = Radius[s] * 1.75f;
                 e.Force = 60f * mult;
+                if (s == 2) e.Flags = Explosion.Flag.KnockDownAlways;  // major: ragdolls everyone in it
                 e.SoundLevel = SoundLevel.VeryLoud;
                 e.Sound2.SetTo(FXExplosionCatapultNear);
                 e.ImageSpaceModifier.SetTo(PushImod);
@@ -465,10 +501,10 @@ string Describe(int t, int p, int s)
         0 => $"{25 * (s + 1)} damage within {r}, and a shove",
         1 => $"{20 * (s + 1)} fire damage within {r}, and the ground keeps burning",
         2 => $"{20 * (s + 1)} frost damage within {r}, and slowed by {30 + 10 * s}% for {3 + 2 * s} seconds",
-        3 => $"an oil slick ({Meters(120f + 60f * s)} radius, 60 seconds) that slows by {20 + 15 * s}%; a fire bomb sets it ablaze",
+        3 => $"an oil slick ({Meters(60f + 30f * s)} radius, 60 seconds) that slows by {20 + 15 * s}%; a fire bomb sets it ablaze",
         4 => "a lingering cloud that hides anyone inside until they strike, but chokes their stamina",
-        5 => $"a blinding flash; anyone up to level {10 * (s + 1)} within {r} flees for {4 + 6 * (s + 1)} seconds",
-        6 => $"anyone up to level {10 * (s + 1)} within {r} attacks whoever is nearest for {4 + 6 * (s + 1)} seconds",
+        5 => $"a blinding flash; anyone up to level {20 + 15 * s} within {r} flees for {4 + 6 * (s + 1)} seconds",
+        6 => $"anyone up to level {20 + 15 * s} within {r} attacks whoever is nearest for {4 + 6 * (s + 1)} seconds",
         _ => $"a deafening blast that staggers everyone within {r}",
     };
     return $"{how} {what}.";
@@ -716,6 +752,7 @@ for (var p = 0; p < Payloads; p++)
     {
         var e = check.Explosions.Single(x => x.FormKey.ID == 0xC80 + p * 3 + s);
         Require(e.Radius >= Radius[s], $"{PayloadNames[p]} {StrengthNames[s]} radius");
+        Require(p != 7 || s != 2 || e.Flags.HasFlag(Explosion.Flag.KnockDownAlways), "major concussion ragdolls");
         Require(p != 7 || e.SoundLevel == SoundLevel.VeryLoud, "concussion is very loud");
         Require(p != 2 || !e.ObjectEffect.IsNull, "frost has a burst");
         Require(p != 3 || check.Hazards.Any(h => h.FormKey == e.PlacedObject.FormKey), "oil leaves a slick");

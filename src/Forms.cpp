@@ -271,6 +271,10 @@ namespace Forms
 			fireSpreadProjectile[s] = dh->LookupForm<RE::BGSProjectile>(Bombs::FireSpreadProjectileId(s), kPlugin);
 		}
 		hazardLook(Bombs::kFrostBurstId, Config::frostBurstModel, "Frost burst");
+		hazardLook(Bombs::kFireBigHazardId, Config::fireBlazeModel, "Big blaze");
+		hazardLook(Bombs::kOilPoolHazardId, Config::oilSlickModel, "Oil pool");
+		fireBigProjectile = dh->LookupForm<RE::BGSProjectile>(Bombs::kFireBigProjectileId, kPlugin);
+		oilPoolProjectile = dh->LookupForm<RE::BGSProjectile>(Bombs::kOilPoolProjectileId, kPlugin);
 		for (int p = 0; p < Bombs::kPayloads; ++p) {
 			if (Config::burstLookModel[p].empty()) {
 				continue;

@@ -296,16 +296,20 @@ namespace
 						out.push_back({ K::kWheel, code == 8 ? 1.0f : -1.0f });
 					}
 					break;
+				// Keys and buttons go in as a press + release on the way down (one step per press): a held
+				// key's release can get lost, and ImGui would keep "holding" it - the list scrolls by itself.
 				case RE::INPUT_DEVICE::kKeyboard:
 					if (down && code == Config::craftKey && Config::craftKey < kMouseOffset) {
 						CraftShared::closeRequested = true;  // the craft key closes it again
-					} else if (const int k = KeyFromScanCode(code); k != ImGuiKey_None) {
-						out.push_back({ K::kKey, 0.0f, 0.0f, k, down });
+					} else if (const int k = KeyFromScanCode(code); down && k != ImGuiKey_None) {
+						out.push_back({ K::kKey, 0.0f, 0.0f, k, true });
+						out.push_back({ K::kKey, 0.0f, 0.0f, k, false });
 					}
 					break;
 				case RE::INPUT_DEVICE::kGamepad:
-					if (const int k = KeyFromGamepad(code); k != ImGuiKey_None) {
-						out.push_back({ K::kKey, 0.0f, 0.0f, k, down });
+					if (const int k = KeyFromGamepad(code); down && k != ImGuiKey_None) {
+						out.push_back({ K::kKey, 0.0f, 0.0f, k, true });
+						out.push_back({ K::kKey, 0.0f, 0.0f, k, false });
 					}
 					break;
 				default:

@@ -111,6 +111,19 @@
           }
         },
         {
+          "id": "fMinHoldMs:Throw",
+          "text": "Tap to set down (ms)",
+          "help": "Let go of the throw key or the attack button sooner than this and the bomb is set down where you're looking instead of thrown. Longer = easier to set down, but quick throws become set-downs too.",
+          "type": "slider",
+          "valueOptions": {
+            "min": 0,
+            "max": 600,
+            "step": 10,
+            "formatString": "{0} ms",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
           "id": "bCancelOnBlock:Throw",
           "text": "Block cancels",
           "help": "Pressing block during a wind-up with the throw key cancels it without using a bomb.",
@@ -202,6 +215,101 @@
           "valueOptions": {
             "sourceType": "ModSettingBool"
           }
+        },
+        {
+          "text": "Bomb in hand",
+          "type": "header"
+        },
+        {
+          "id": "fHandScale:Visuals",
+          "text": "Size",
+          "help": "Size of the bomb held in your hand (1 = the pot's full size).",
+          "type": "slider",
+          "valueOptions": {
+            "min": 0.05,
+            "max": 1.5,
+            "step": 0.01,
+            "formatString": "{2}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fHandOffsetX:Visuals",
+          "text": "Move X",
+          "help": "Moves the held bomb along the hand's X axis (game units).",
+          "type": "slider",
+          "valueOptions": {
+            "min": -30,
+            "max": 30,
+            "step": 0.5,
+            "formatString": "{1}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fHandOffsetY:Visuals",
+          "text": "Move Y",
+          "help": "Moves the held bomb along the hand's Y axis (game units).",
+          "type": "slider",
+          "valueOptions": {
+            "min": -30,
+            "max": 30,
+            "step": 0.5,
+            "formatString": "{1}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fHandOffsetZ:Visuals",
+          "text": "Move Z",
+          "help": "Moves the held bomb along the hand's Z axis (game units).",
+          "type": "slider",
+          "valueOptions": {
+            "min": -30,
+            "max": 30,
+            "step": 0.5,
+            "formatString": "{1}",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fHandRotX:Visuals",
+          "text": "Turn X",
+          "help": "Turns the held bomb about the hand's X axis (degrees).",
+          "type": "slider",
+          "valueOptions": {
+            "min": -180,
+            "max": 180,
+            "step": 5,
+            "formatString": "{0} deg",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fHandRotY:Visuals",
+          "text": "Turn Y",
+          "help": "Turns the held bomb about the hand's Y axis (degrees).",
+          "type": "slider",
+          "valueOptions": {
+            "min": -180,
+            "max": 180,
+            "step": 5,
+            "formatString": "{0} deg",
+            "sourceType": "ModSettingFloat"
+          }
+        },
+        {
+          "id": "fHandRotZ:Visuals",
+          "text": "Turn Z",
+          "help": "Turns the held bomb about the hand's Z axis (degrees).",
+          "type": "slider",
+          "valueOptions": {
+            "min": -180,
+            "max": 180,
+            "step": 5,
+            "formatString": "{0} deg",
+            "sourceType": "ModSettingFloat"
+          }
         }
       ]
     },
@@ -242,6 +350,19 @@
           "id": "bAddToLeveledLists:Loot",
           "text": "Merchants and loot",
           "help": "Merchants stock bombs and bandits/Forsworn carry them. Applies the next time you start the game.",
+          "type": "toggle",
+          "valueOptions": {
+            "sourceType": "ModSettingBool"
+          }
+        },
+        {
+          "text": "Debug",
+          "type": "header"
+        },
+        {
+          "id": "bFreeCrafting:Debug",
+          "text": "Free bomb-making",
+          "help": "Making bombs uses nothing up (and gives no Alchemy practice). For testing.",
           "type": "toggle",
           "valueOptions": {
             "sourceType": "ModSettingBool"

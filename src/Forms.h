@@ -38,6 +38,8 @@ namespace Forms
 	inline RE::BGSProjectile* oilFireProjectile = nullptr;
 	inline RE::BGSProjectile* smokeMistProjectile[Bombs::kStrengths]{};  // smoke's low-mist layer, per strength
 	inline RE::BGSProjectile* fireSpreadProjectile[Bombs::kStrengths]{};  // burning ground around a fire burst
+	inline RE::BGSProjectile* fireBigProjectile = nullptr;                // one big blaze (major fire, burning oil)
+	inline RE::BGSProjectile* oilPoolProjectile = nullptr;                // pools round an oil slick
 	inline RE::BGSProjectile* burstLookProjectile[Bombs::kPayloads]{};    // a short look where a bomb bursts (null = none)
 
 	// "Skyrim.esm|0B9BD2" -> that form, or nullptr (logged).

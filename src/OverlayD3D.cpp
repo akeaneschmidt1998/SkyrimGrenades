@@ -118,6 +118,8 @@ namespace
 			if (CraftShared::justOpened.exchange(false)) {
 				g_cursorX = io.DisplaySize.x * 0.5f;
 				g_cursorY = io.DisplaySize.y * 0.5f;
+				io.ClearInputKeys();  // nothing still "held" from last time
+				io.ClearInputMouse();
 				io.AddMousePosEvent(g_cursorX, g_cursorY);
 				g_menu.firstFrame = true;
 			}

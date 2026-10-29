@@ -25,7 +25,7 @@ namespace Config
 	inline float         chargeSeconds = 1.0f;   // time to full wind-up
 	inline float         loftDegrees = 12.0f;    // extra upward angle over the crosshair
 	inline float         placeReach = 250.0f;    // how far ahead a tripwire can be set down
-	inline float         minHoldMs = 150.0f;     // shorter taps cancel (no bomb used)
+	inline float         minHoldMs = 150.0f;     // release sooner than this = a tap: the bomb is set down, not thrown
 	inline float         cooldownMs = 600.0f;    // between throws
 	inline bool          cancelOnBlock = true;   // pressing block during a G wind-up cancels it
 	inline std::string   throwNode = "NPC L Hand [LHnd]";       // where a left-hand / throw-key bomb leaves from
@@ -71,6 +71,7 @@ namespace Config
 	inline std::string smokeMistModel = "Skyrim.esm|0B946C";       // FXMistLowSmokey01 (debug smoke 6)
 	inline std::string oilSlickModel = "Dragonborn.esm|01DA00";    // DLC2ExpSpiderOilPool (oil spider's pool)
 	inline std::string frostBurstModel = "Skyrim.esm|0B79F9";      // FrostBlizzardSpellHazard01
+	inline std::string fireBlazeModel = "Skyrim.esm|106112";       // FXfireWithEmbersHeavySCALED (major fire, burning oil)
 	inline std::string fearBurstModel = "Skyrim.esm|08CA32";       // FX_AzuraGoodMagicCloud
 	inline std::string frenzyBurstModel = "Skyrim.esm|08CA31";     // FX_AzuraEvilMagicCloud
 	// A short look dropped where any bomb bursts, per payload ("" = none: frost, fear and frenzy
@@ -88,6 +89,7 @@ namespace Config
 	// The bomb in your hand (casting art, like the spider scrolls), shrunk to fit
 	inline float handScale = 0.45f;
 	inline float handOffset[3]{ 0.0f, 0.0f, 0.0f };  // x y z on the hand's magic node (fHandOffsetX/Y/Z)
+	inline float handRotation[3]{ 0.0f, 0.0f, 0.0f };  // degrees about x y z (fHandRotX/Y/Z)
 
 	// --- Debug: make bombs for nothing (nothing used up, no Alchemy practice) ---
 	inline bool freeCrafting = true;

@@ -292,6 +292,7 @@ namespace
 	struct Slick
 	{
 		Vec3  pos;
+		int   strength = 0;
 		float radius = 0.0f;
 		float ttl = 0.0f;  // seconds left (the slick hazard lasts 60 s)
 	};
@@ -314,22 +315,6 @@ namespace
 		g_live.push_back(l);
 	}
 
-	void Ignite(RE::PlayerCharacter* a_player, const Slick& a_slick)
-	{
-		auto* base = Forms::oilFireProjectile;
-		if (!base) {
-			return;
-		}
-		// dropped straight down onto the slick: bursts on contact and leaves a big fire
-		RE::Projectile::ProjectileRot rot{ 1.5707963f, 0.0f };
-		RE::Projectile::LaunchData    data(base, a_player, ToNi(a_slick.pos + Vec3{ 0.0f, 0.0f, 30.0f }), rot);
-		data.autoAim = false;
-		data.useOrigin = true;
-		RE::ProjectileHandle h;
-		RE::Projectile::Launch(&h, data);
-		logger::info("Oil slick at ({:.0f}, {:.0f}, {:.0f}) ignited", a_slick.pos.x, a_slick.pos.y, a_slick.pos.z);
-	}
-
 	// Smoke's second layer: a low mist dropped where the smoke bomb burst.
 	void SmokeMist(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_strength)
 	{
@@ -346,24 +331,153 @@ namespace
 	}
 
 	// Fire's spread: a ring of burning-ground patches around a fire burst, so it covers the blast.
+	// Drops one of the visual / fire "droppers" straight down onto a spot.
+	void DropAt(RE::PlayerCharacter* a_player, RE::BGSProjectile* a_base, const Vec3& a_at)
+	{
+		if (!a_base) {
+			return;
+		}
+		RE::Projectile::ProjectileRot rot{ 1.5707963f * g_pitchSign, 0.0f };
+		RE::Projectile::LaunchData    data(a_base, a_player, ToNi(a_at + Vec3{ 0.0f, 0.0f, 60.0f }), rot);
+		data.autoAim = false;
+		data.useOrigin = true;
+		RE::ProjectileHandle h;
+		RE::Projectile::Launch(&h, data);
+	}
+
+	void Ring(RE::PlayerCharacter* a_player, RE::BGSProjectile* a_base, const Vec3& a_at, int a_count, float a_radius, float a_turn = 0.0f)
+	{
+		for (int i = 0; i < a_count; ++i) {
+			const float a = 2.0f * Ballistics::kPi * (static_cast<float>(i) + a_turn) / static_cast<float>(a_count);
+			DropAt(a_player, a_base, a_at + Vec3{ std::cos(a) * a_radius, std::sin(a) * a_radius, 0.0f });
+		}
+	}
+
+	// Fire's look: mild = the centre patch only; moderate = 3 patches round the edge; major = 4 and a
+	// big blaze in the middle.
 	void FireSpread(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_strength)
 	{
 		const int s = std::clamp(a_strength, 0, Bombs::kStrengths - 1);
-		auto*     base = Forms::fireSpreadProjectile[s];
-		if (!base) {
+		Ring(a_player, Forms::fireSpreadProjectile[s], a_at, Bombs::FireSpreadCount(s), Bombs::BlastRadius(Bombs::kFire, s), 0.5f * static_cast<float>(s));
+		if (s == Bombs::kMajor) {
+			DropAt(a_player, Forms::fireBigProjectile, a_at);
+		}
+	}
+
+	// Oil's look: pools round the slick's edge (the centre one comes with the slick itself).
+	void OilPools(RE::PlayerCharacter* a_player, const Vec3& a_at, int a_strength)
+	{
+		const int s = std::clamp(a_strength, 0, Bombs::kStrengths - 1);
+		Ring(a_player, Forms::oilPoolProjectile, a_at, Bombs::OilPoolCount(s), Bombs::OilSlickRadius(s) * 0.8f);
+	}
+
+	void Ignite(RE::PlayerCharacter* a_player, const Slick& a_slick)
+	{
+		// the burning-oil burst in the middle (damage + a big fire), fire round the edge, a blaze on top
+		DropAt(a_player, Forms::oilFireProjectile, a_slick.pos);
+		Ring(a_player, Forms::fireSpreadProjectile[Bombs::kMajor], a_slick.pos, 4 + a_slick.strength, a_slick.radius * 0.8f);
+		DropAt(a_player, Forms::fireBigProjectile, a_slick.pos);
+		logger::info("Oil slick at ({:.0f}, {:.0f}, {:.0f}) ignited", a_slick.pos.x, a_slick.pos.y, a_slick.pos.z);
+	}
+
+	// Fire from anything else - spells, enchanted arrows, fire explosions and hazards near a slick.
+	bool IsFire(const RE::MagicItem* a_magic)
+	{
+		if (!a_magic) {
+			return false;
+		}
+		for (const auto* e : a_magic->effects) {
+			if (e && e->baseEffect && e->baseEffect->data.resistVariable == RE::ActorValue::kResistFire) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	bool IsOurs(const RE::TESForm* a_base)
+	{
+		for (const auto& t : Forms::Types()) {
+			if (t.projectile == a_base) {
+				return true;
+			}
+		}
+		return a_base == Forms::oilFireProjectile;
+	}
+
+	float g_fireScan = 0.0f;
+
+	void IgniteFromOtherFire(RE::PlayerCharacter* a_player, float a_dt)
+	{
+		g_fireScan -= a_dt;
+		if (g_slicks.empty() || g_fireScan > 0.0f) {
 			return;
 		}
-		const int   n = Bombs::FireSpreadCount(s);
-		const float r = Bombs::BlastRadius(Bombs::kFire, s) * 0.6f;
-		for (int i = 0; i < n; ++i) {
-			const float a = 2.0f * Ballistics::kPi * (static_cast<float>(i) + 0.5f * static_cast<float>(s)) / static_cast<float>(n);
-			const Vec3  at = a_at + Vec3{ std::cos(a) * r, std::sin(a) * r, 60.0f };
-			RE::Projectile::ProjectileRot rot{ 1.5707963f * g_pitchSign, 0.0f };  // straight down onto the ground
-			RE::Projectile::LaunchData    data(base, a_player, ToNi(at), rot);
-			data.autoAim = false;
-			data.useOrigin = true;
-			RE::ProjectileHandle h;
-			RE::Projectile::Launch(&h, data);
+		g_fireScan = 0.2f;
+		auto* tes = RE::TES::GetSingleton();
+		if (!tes) {
+			return;
+		}
+		std::vector<std::pair<Vec3, Vec3>> fire;  // segments that are on fire (a point: both ends equal)
+		tes->ForEachReferenceInRange(a_player, 6000.0f, [&](RE::TESObjectREFR* a_ref) {
+			if (!a_ref || a_ref->IsDisabled() || a_ref->IsDeleted()) {
+				return RE::BSContainer::ForEachResult::kContinue;
+			}
+			const Vec3 at = ToVec(a_ref->GetPosition());
+			if (auto* proj = a_ref->As<RE::Projectile>()) {
+				auto* base = a_ref->GetBaseObject();
+				if (IsOurs(base)) {
+					return RE::BSContainer::ForEachResult::kContinue;  // our own bombs are handled when they burst
+				}
+				auto& rd = proj->GetProjectileRuntimeData();
+				const bool fiery = IsFire(rd.spell) || (rd.explosion && IsFire(rd.explosion->formEnchanting));
+				if (fiery) {
+					// a flame jet reaches ahead of where it starts
+					Vec3 end = at;
+					if (base && base->GetFormType() == RE::FormType::ProjectileFlame) {
+						const auto ang = a_ref->GetAngle();
+						const Vec3 fwd{ std::sin(ang.z) * std::cos(ang.x), std::cos(ang.z) * std::cos(ang.x), -std::sin(ang.x) };
+						end = at + fwd * 450.0f;
+					}
+					fire.emplace_back(at, end);
+				}
+			} else if (auto* ex = a_ref->As<RE::Explosion>()) {
+				auto* base = a_ref->GetBaseObject();
+				auto* e = base ? base->As<RE::BGSExplosion>() : nullptr;
+				if (e && IsFire(e->formEnchanting) && !IsOurs(base)) {
+					fire.emplace_back(at, at);
+				}
+			} else if (auto* base = a_ref->GetBaseObject(); base && base->GetFormType() == RE::FormType::Hazard) {
+				auto* hz = base->As<RE::BGSHazard>();
+				if (hz && IsFire(hz->data.spell)) {
+					fire.emplace_back(at, at);
+				}
+			}
+			return RE::BSContainer::ForEachResult::kContinue;
+		});
+		if (fire.empty()) {
+			return;
+		}
+		auto distToSeg = [](const Vec3& p, const Vec3& a, const Vec3& b) {
+			const Vec3  ab = b - a;
+			const float len2 = ab.x * ab.x + ab.y * ab.y + ab.z * ab.z;
+			float       t = len2 > 0.0f ? ((p.x - a.x) * ab.x + (p.y - a.y) * ab.y + (p.z - a.z) * ab.z) / len2 : 0.0f;
+			t = std::clamp(t, 0.0f, 1.0f);
+			return (p - (a + ab * t)).Length();
+		};
+		for (auto it = g_slicks.begin(); it != g_slicks.end();) {
+			bool lit = false;
+			for (const auto& [a, b] : fire) {
+				if (distToSeg(it->pos, a, b) <= it->radius + 40.0f) {
+					lit = true;
+					break;
+				}
+			}
+			if (lit) {
+				Ignite(a_player, *it);
+				it = g_slicks.erase(it);
+			} else {
+				++it;
+			}
 		}
 	}
 
@@ -391,7 +505,8 @@ namespace
 				SmokeMist(a_player, it->last, it->strength);
 			}
 			if (it->payload == Bombs::kOil) {
-				g_slicks.push_back({ it->last, Bombs::OilSlickRadius(it->strength), 60.0f });
+				g_slicks.push_back({ it->last, it->strength, Bombs::OilSlickRadius(it->strength), 60.0f });
+				OilPools(a_player, it->last, it->strength);
 			} else if (it->payload == Bombs::kFire) {
 				const float blast = Bombs::BlastRadius(Bombs::kFire, it->strength);
 				for (auto s = g_slicks.begin(); s != g_slicks.end();) {
@@ -474,9 +589,16 @@ namespace
 			return RE::BSVisit::BSVisitControl::kContinue;
 		});
 		obj->name = a_name;
-		obj->local.scale = Config::handScale;
-		obj->local.translate = { Config::handOffset[0], Config::handOffset[1], Config::handOffset[2] };
 		return obj;
+	}
+
+	// Scale, offset and turn from the settings (applied every frame, so MCM changes show at once).
+	void PoseHeld(RE::NiAVObject* a_obj)
+	{
+		constexpr float kDeg = 3.14159265f / 180.0f;
+		a_obj->local.scale = Config::handScale;
+		a_obj->local.translate = { Config::handOffset[0], Config::handOffset[1], Config::handOffset[2] };
+		a_obj->local.rotate.SetEulerAnglesXYZ(Config::handRotation[0] * kDeg, Config::handRotation[1] * kDeg, Config::handRotation[2] * kDeg);
 	}
 
 	void UpdateHands(RE::PlayerCharacter* a_player)
@@ -503,9 +625,7 @@ namespace
 					if (n && std::string_view(n).starts_with("FirePotsHeld|")) {
 						if (!have && want == n) {
 							have = true;
-							if (std::fabs(child->local.scale - Config::handScale) > 0.001f) {
-								child->local.scale = Config::handScale;
-							}
+							PoseHeld(child.get());
 						} else {
 							node->DetachChildAt(i);  // put away, swapped, or a stale copy
 							continue;
@@ -515,6 +635,7 @@ namespace
 				}
 				if (!have && !want.empty()) {
 					if (auto obj = MakeHeld(mesh, want)) {
+						PoseHeld(obj.get());
 						node->AttachChild(obj.get(), true);
 						RE::NiUpdateData ud;
 						obj->Update(ud);
@@ -1197,6 +1318,7 @@ namespace
 		float charge = 0.0f;
 		int   countBefore = 0;
 		float waited = 0.0f;
+		bool  place = false;  // a quick tap: set it down instead of throwing
 	};
 	PendingCast g_pending;
 
@@ -1230,6 +1352,7 @@ namespace
 		UpdateHands(a_player);
 		UpdateLit(a_player, dt);
 		UpdateOil(a_player, dt);
+		IgniteFromOtherFire(a_player, dt);
 		UpdateWorld(a_player, dt);
 		g_throw.cooldown = (std::max)(0.0f, g_throw.cooldown - dt);
 
@@ -1239,7 +1362,13 @@ namespace
 			if (CountPots(a_player, CurrentType()) < g_pending.countBefore) {
 				g_pending.active = false;
 				if (const auto aim = GetAim(a_player, g_pending.leftHand)) {
-					Launch(a_player, MakePlan(a_player, *aim, g_pending.charge), g_pending.charge, false);
+					Launch(a_player, MakePlan(a_player, *aim, g_pending.charge, g_pending.place), g_pending.charge, false);
+				}
+			} else if (g_pending.place && g_pending.waited > 0.2f) {
+				// a tap too short for vanilla to cast the scroll: set it down ourselves
+				g_pending.active = false;
+				if (const auto aim = GetAim(a_player, g_pending.leftHand)) {
+					Launch(a_player, MakePlan(a_player, *aim, 0.0f, true), 0.0f, true);
 				}
 			} else if (g_pending.waited > 0.75f) {
 				g_pending.active = false;  // vanilla cancelled the cast (released too soon, staggered...)
@@ -1361,7 +1490,8 @@ namespace
 		if (!IsDown(g_throw.source)) {
 			if (g_throw.source != 0) {
 				// from a hand: vanilla casts the scroll now (with its release animation); launch then
-				g_pending = { true, static_cast<int>(g_typeIndex), g_throw.leftHand, charge, g_throw.pots, 0.0f };
+				const bool tap = g_throw.held * 1000.0f < Config::minHoldMs;
+				g_pending = { true, static_cast<int>(g_typeIndex), g_throw.leftHand, charge, g_throw.pots, 0.0f, tap };
 				StopWinding();
 				return;
 			}

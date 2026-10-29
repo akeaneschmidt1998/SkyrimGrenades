@@ -51,7 +51,10 @@ namespace Bombs
 	constexpr unsigned BurstLookProjectileId(int p) { return 0xD90u + static_cast<unsigned>(p); }
 	constexpr unsigned HandArtId(int t) { return 0xDA0u + static_cast<unsigned>(t); }
 	constexpr unsigned FireSpreadProjectileId(int s) { return 0xD77u + static_cast<unsigned>(s); }
-	constexpr int      FireSpreadCount(int s) { return 5 + s; }  // burning patches in the ring around a fire burst
+	constexpr int      FireSpreadCount(int s) { return s == 0 ? 0 : s == 1 ? 3 : 4; }  // ring patches: 0 / 3 / 4
+	inline constexpr unsigned kFireBigHazardId = 0xDB0, kFireBigProjectileId = 0xDB2;   // major fire / burning oil: one big blaze
+	inline constexpr unsigned kOilPoolHazardId = 0xDB3, kOilPoolProjectileId = 0xDB5;   // oil: pools around the slick
+	constexpr int      OilPoolCount(int s) { return 3 + s; }
 
 	// Debug smoke bombs: one per candidate smoke effect, to try them out (FirePots.ini [Debug]).
 	inline constexpr int kDebugSmokes = 10;
@@ -63,10 +66,10 @@ namespace Bombs
 	// --- Numbers (game units; 70 units ~ 1 m) ---
 	constexpr float BlastRadius(int a_payload, int a_strength)
 	{
-		const float r = 140.0f + 70.0f * static_cast<float>(a_strength);
+		const float r = 70.0f + 35.0f * static_cast<float>(a_strength);  // 1 / 1.5 / 2 m
 		return a_payload == kConcussion ? r * 1.75f : r;
 	}
-	constexpr float OilSlickRadius(int a_strength) { return 120.0f + 60.0f * static_cast<float>(a_strength); }
+	constexpr float OilSlickRadius(int a_strength) { return 60.0f + 30.0f * static_cast<float>(a_strength); }
 	inline constexpr float kTripwireRadius = 120.0f;  // proximity trigger (ESP)
 	constexpr int FragDamage(int s) { return 25 * (s + 1); }
 	constexpr int FireDamage(int s) { return 20 * (s + 1); }
@@ -75,7 +78,7 @@ namespace Bombs
 	constexpr int FrostSlowSeconds(int s) { return 3 + 2 * s; }
 	constexpr int OilSlowPercent(int s) { return 20 + 15 * s; }
 	inline constexpr int kOilSlickSeconds = 60;
-	constexpr int MindLevel(int s) { return 10 * (s + 1); }       // fear / frenzy: highest level affected
+	constexpr int MindLevel(int s) { return 20 + 15 * s; }        // fear / frenzy: highest level affected
 	constexpr int MindSeconds(int s) { return 4 + 6 * (s + 1); }  // fear / frenzy duration
 
 	// Fuse bombs are real physics objects (they bounce and roll); the fuse is lit when thrown.

@@ -173,6 +173,10 @@ namespace
 		else if (key == "fhandoffsetx")       handOffset[0] = std::clamp(std::stof(val), -100.0f, 100.0f);
 		else if (key == "fhandoffsety")       handOffset[1] = std::clamp(std::stof(val), -100.0f, 100.0f);
 		else if (key == "fhandoffsetz")       handOffset[2] = std::clamp(std::stof(val), -100.0f, 100.0f);
+		else if (key == "fhandrotx")          handRotation[0] = std::clamp(std::stof(val), -360.0f, 360.0f);
+		else if (key == "fhandroty")          handRotation[1] = std::clamp(std::stof(val), -360.0f, 360.0f);
+		else if (key == "fhandrotz")          handRotation[2] = std::clamp(std::stof(val), -360.0f, 360.0f);
+		else if (key == "sfireblazemodel")    fireBlazeModel = Unquote(val);
 		else if (key == "bfreecrafting")      freeCrafting = ParseBool(val);
 		else if (key == "fmiscingredientweight") miscIngredientWeight = std::clamp(std::stof(val), -1.0f, 100.0f);
 		else if (key == "fbombweight")        bombWeight = std::clamp(std::stof(val), -1.0f, 100.0f);
